@@ -1,0 +1,488 @@
+# Frontend Module & Database Table Analysis
+> **Project:** Learning Management System v-25 (Next.js 14 — App Router)  
+> **Roles covered:** Student · Instructor · Admin · Employer · Enterprise
+
+---
+
+## Architecture Overview
+
+The frontend is a **Next.js App Router** application with four distinct portals:
+
+```
+app/
+├── (auth)/          — Login / Signup / Forgot Password
+├── (student)/       — Student portal (23 sub-routes)
+├── instructor/      — Instructor portal (13 sub-routes)
+├── admin/           — Admin portal (10 sub-routes)
+├── employer/        — Employer landing / dashboard
+└── enterprise/      — Enterprise landing / onboarding
+```
+
+---
+
+## Module 1 – Authentication ([(auth)/](file:///d:/Dev/Lipaidox/Learning%20Mnagament%20system%20v-25/app/%28student%29/certifications/page.tsx#279-283))
+
+**Pages / Routes**
+- `/login`
+- `/signup`
+- `/forgot-password`
+
+**Tabs** — None (linear forms)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `users` | id, email, password_hash, role (student\|instructor\|admin\|employer\|enterprise), name, avatar_url, created_at, status (active\|pending\|suspended) |
+| `password_reset_tokens` | id, user_id, token, expires_at, used_at |
+| `sessions` / JWT store | user_id, token, device_info, expires_at |
+| `user_verification` | user_id, verified_at, verification_code |
+
+---
+
+## Module 2 – Student Dashboard (`/dashboard`)
+
+**Tabs / Sections** (sidebar cards, no explicit tab bar)
+- Continue Learning (active enrollments)
+- Recommended Courses
+- Learning Paths
+- Profile Card
+- Career Goals
+- Achievements
+- Recent Certificates
+- Course Announcements
+- Learning Insights
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `student_profiles` | user_id, first_name, last_name, headline, bio, location, phone, website, linkedin, github, portfolio, employment_status, years_of_experience, career_goals[], desired_roles[], remote_preference, willing_to_relocate, onboarding_completed, onboarding_step |
+| `enrollments` | id, student_id, course_id, status (active\|paused\|completed), progress (%), enrolled_at, completed_at, last_accessed |
+| `completed_lessons` | enrollment_id, lesson_id, completed_at |
+| `learning_paths` | id, title, description, skill[], course_ids[], estimated_duration |
+| `recommendations` | id, student_id, course_id, priority (high\|low), reasons[], created_at |
+| `announcements` | id, course_id, instructor_id, title, body, created_at |
+| `learning_streaks` | student_id, current_streak, longest_streak, last_activity_date |
+
+---
+
+## Module 3 – Student Profile (`/profile`)
+
+**Tabs**
+1. **Overview** — Personal info, career goals, achievements, certificates, learning preferences
+2. **Experience** — Work history, certifications
+3. **Education** — Degrees, institutions
+4. **Skills** — Skill list with level & category
+5. **Projects** — Portfolio projects
+
+**Sub-page:** `/profile/resume` — Resume builder (PDF export)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `student_profiles` | (same as above) |
+| `work_experiences` | id, student_id, company, position, location, location_type (remote\|hybrid\|onsite), start_date, end_date, is_current, description, achievements[], skills[] |
+| `education_records` | id, student_id, institution, degree, field_of_study, start_date, end_date, is_current, description, location |
+| `student_skills` | id, student_id, name, level (beginner\|intermediate\|advanced\|expert), category, endorsed_by[] |
+| `external_certifications` | id, student_id, name, issuer, issue_date, expiry_date, credential_id, credential_url, skills[] |
+| `projects` | id, student_id, title, description, url, github_url, technologies[], is_featured |
+| `preferred_categories` | student_id, category |
+| `learning_goals` | student_id, goal |
+
+---
+
+## Module 4 – Student Settings (`/settings`)
+
+**Tabs / Sections**
+1. **Profile** — Basic info, avatar, social links
+2. **Notifications** — Channels (email/push/SMS) + learning alerts + achievement alerts
+3. **Privacy** — Profile visibility, show badges/progress, employer contact, messaging
+4. **Appearance** — Theme (light/dark/system), language, timezone, date/time format
+5. **Data & Storage** — Low data mode, video quality, offline downloads, storage
+6. **Security** — Change password, 2FA toggle, active sessions
+7. **Billing** — Subscription info, invoices
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `notification_preferences` | student_id, email_enabled, push_enabled, sms_enabled, course_updates, new_lessons, quiz_reminders, assignment_due, cohort_sessions, streak_reminders, certificate_earned, badge_earned, job_matches, marketing_emails |
+| `privacy_settings` | student_id, profile_visibility (public\|connections\|private), show_progress, show_badges, show_certificates, show_activity, allow_messaging, show_in_talent_pool, allow_employer_contact |
+| `appearance_settings` | student_id, theme, language, timezone, date_format, time_format |
+| `data_settings` | student_id, low_data_mode, auto_download, download_wifi_only, video_quality |
+| `user_sessions` | id, user_id, device_info, ip_address, created_at, last_active, is_current |
+| `two_factor_auth` | user_id, enabled, method, secret_key |
+
+---
+
+## Module 5 – My Learning (`/my-learning`)
+
+**Tabs** — Likely: In Progress · Completed · Bookmarked / Saved
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `enrollments` | (see Module 2) |
+| `wishlists` / `saved_courses` | student_id, course_id, saved_at |
+| `lesson_progress` | student_id, lesson_id, watch_time_seconds, last_position, is_completed |
+| `notes` | id, student_id, lesson_id, content, created_at |
+
+---
+
+## Module 6 – Courses / Course Pool (`/courses`, `/course-pool`)
+
+**Tabs / Filters**
+- Browse All · By Category · By Level · By Rating · Free vs Paid
+
+**Sub-route:** `/courses/[slug]` — Course detail page  
+**Sub-route:** `/learn/[slug]` — Course player
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `courses` | id, slug, title, description, thumbnail_url, instructor_id, category, sub_category, level (beginner\|intermediate\|advanced), price, discount_price, currency, duration_seconds, total_lessons, status (draft\|review\|published), rating, reviews_count, total_students, language, created_at |
+| `course_sections` | id, course_id, title, order_index |
+| `lessons` | id, section_id, course_id, title, type (video\|quiz\|assignment\|reading\|live), content_url, duration_seconds, order_index, is_free_preview |
+| `course_categories` | id, name, slug, parent_id, icon |
+| `course_tags` | id, course_id, tag |
+| `course_resources` | id, lesson_id, title, url, type (pdf\|link\|code) |
+
+---
+
+## Module 7 – Certifications (`/certifications`)
+
+**Tabs**
+1. **My Certificates** — Earned certificates with download/share
+2. **Skill Badges** — Gold/Silver/Platinum skill badges with endorsements
+3. **Available Certifications** — Purchasable / upcoming certs with progress
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `certificates` | id, student_id, course_id, title, type (professional\|completion\|skill_mastery), grade (distinction\|merit\|honors\|pass), score, issue_date, verification_code, public_url, qr_code_url, blockchain_hash, blockchain_network, is_public, view_count, download_count |
+| `skill_badges` | id, student_id, skill_name, badge_type (platinum\|gold\|silver\|bronze), score, assessments_count, endorsements_count, earned_at, verification_code |
+| `badge_endorsements` | id, badge_id, endorsed_by_user_id, endorsed_at |
+| `available_certifications` | id, title, provider, type, difficulty, estimated_hours, price, currency, requirements[], skills[], enrolled_count, pass_rate |
+| `certification_enrollments` | student_id, cert_id, progress_percent, enrolled_at, completed_at |
+
+---
+
+## Module 8 – Community (`/community`)
+
+**Tabs**
+1. **Study Rooms** — Discord-like chat with text/voice channels, members sidebar
+2. **Accountability** — Groups with weekly hour goals, daily check-ins, streaks
+3. **Discover** — Browse & join public study rooms
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `study_rooms` | id, name, description, course_id (nullable), creator_id, type (public\|private\|course_only), max_members, is_active, created_at |
+| `study_room_members` | room_id, user_id, role (owner\|moderator\|member), joined_at, is_online, last_seen |
+| `study_room_channels` | id, room_id, name, type (text\|voice), description, is_private |
+| `study_room_messages` | id, channel_id, user_id, content, type (text\|file\|image), reply_to_id, is_pinned, created_at |
+| `message_reactions` | message_id, user_id, emoji |
+| `accountability_groups` | id, name, description, course_id (nullable), streak, created_at |
+| `accountability_members` | group_id, user_id, role (leader\|member), weekly_goal_hours, current_week_hours, streak, joined_at |
+| `accountability_check_ins` | id, group_id, user_id, content, hours_logged, mood (great\|good\|okay\|struggling), achievements[], blockers[], created_at |
+
+---
+
+## Module 9 – Careers / Job Board (`/careers`)
+
+**Tabs / Sections** — Job listings, Talent Pool status, Job Matches, Resume Builder
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `job_listings` | id, employer_id, title, company, location, type (remote\|hybrid\|onsite), salary_min, salary_max, currency, description, required_skills[], status, created_at |
+| `job_applications` | id, student_id, job_id, resume_url, cover_letter, status (applied\|viewed\|shortlisted\|rejected\|hired), applied_at |
+| `talent_pool_profiles` | student_id, is_visible, bio, skills[], desired_salary, availability |
+
+---
+
+## Module 10 – Skills (`/skills`)
+
+**Tabs** — My Skills · Skill Assessments · Recommendations
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `student_skills` | (see Module 3) |
+| `skill_assessments` | id, skill_id, student_id, score, passed, taken_at |
+| `skill_categories` | id, name, subcategories[] |
+
+---
+
+## Module 11 – Performance / Analytics (`/performance`)
+
+**Tabs / Sections** — Learning hours, Completion rate, Streak, Course-by-course breakdown
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `learning_activity_logs` | id, student_id, course_id, lesson_id, action (start\|pause\|complete\|quiz_attempt), duration_seconds, logged_at |
+| `quiz_attempts` | id, student_id, quiz_id, answers[], score, passed, attempted_at |
+| `assignment_submissions` | id, student_id, assignment_id, file_url, text_content, score, feedback, submitted_at, graded_at |
+
+---
+
+## Module 12 – Messages (`/messages`)
+
+**UI** — Split-pane inbox (conversation list + chat area)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `conversations` | id, participant_ids[], created_at, last_message_at |
+| `messages` | id, conversation_id, sender_id, content, type (text\|file), read_at, sent_at |
+| `message_attachments` | id, message_id, file_url, file_type, file_size |
+
+---
+
+## Module 13 – Notifications (`/notifications`)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `notifications` | id, user_id, type, title, body, action_url, is_read, created_at |
+
+---
+
+## Module 14 – Diagnostics / Learning Insights (`/diagnostics`)
+
+**Tabs** — Skill gaps, Learning style, Recommended paths
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `learning_diagnostics` | student_id, skill_gaps[], learning_style, computed_at |
+| `learning_path_progress` | student_id, path_id, progress_percent |
+
+---
+
+## Module 15 – Subscription / Billing (`/subscription`, `/checkout`)
+
+**Tabs** — Current Plan · Payment Methods · Invoice History
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `subscriptions` | id, student_id, plan_id, status (active\|cancelled\|expired), start_date, end_date, stripe_subscription_id |
+| `plans` | id, name, price, currency, interval (monthly\|yearly), features[] |
+| `payments` | id, user_id, amount, currency, status, payment_method, stripe_payment_id, created_at |
+| `invoices` | id, user_id, amount, status, invoice_url, created_at |
+
+---
+
+## Module 16 – Cohorts (`/cohorts`)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `cohorts` | id, course_id, instructor_id, name, start_date, end_date, max_students, status |
+| `cohort_members` | cohort_id, student_id, joined_at |
+| `cohort_sessions` | id, cohort_id, title, scheduled_at, duration_minutes, meet_url, recording_url |
+
+---
+
+## Module 17 – Labs (`/labs`)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `labs` | id, course_id, lesson_id, title, type (code\|quiz\|sandbox), instructions, starter_code, solution_code |
+| `lab_submissions` | id, lab_id, student_id, code, output, is_passing, submitted_at |
+
+---
+
+## Module 18 – Instructor Portal (`/instructor/`)
+
+**Pages and their Tabs**
+
+### 18a. Instructor Dashboard (`/instructor` — root)
+- **Quick Action Cards:** Create Course, View Analytics, Manage Students, Review Moderation, Team Management, Course Assignments
+
+### 18b. Courses (`/instructor/courses`)
+- List view: all courses with status filters
+- `/instructor/courses/create` — multi-step course builder
+- `/instructor/courses/[id]` — Edit: tabs → **Curriculum, Settings, Pricing, Students, Analytics**
+
+### 18c. Students (`/instructor/students`)
+- Enrolled students table, progress tracking, messaging
+
+### 18d. Analytics (`/instructor/analytics`)
+- Revenue chart, enrollment trends, completion rates, rating trends
+
+### 18e. Revenue (`/instructor/revenue`)
+- Earnings chart, payout history, tax documents
+
+### 18f. Reviews (`/instructor/reviews`)
+- Tabs: **Pending Approval · Approved · Rejected**
+
+### 18g. Assignments (`/instructor/assignments`)
+- List of student submissions, grading interface
+
+### 18h. Team (`/instructor/team`)
+- Co-instructor invites, roles (Admin\|Instructor\|TA), pending invites
+
+### 18i. Messages (`/instructor/messages`)
+- Instructor inbox with students
+
+### 18j. Settings (`/instructor/settings`)
+- Payout settings, profile, notification preferences
+
+### 18k. Business Profile (`/instructor/business-profile`)
+- Public profile info, bio, social links
+
+**Additional Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `instructor_profiles` | user_id, bio, headline, specializations[], rating, payout_account_id |
+| `course_reviews` | id, course_id, student_id, rating, comment, status (pending\|approved\|rejected), created_at |
+| `instructor_payouts` | id, instructor_id, amount, currency, status, payout_date, stripe_payout_id |
+| `institution_users` | id, institution_id (instructor_id), user_id, role (admin\|instructor\|ta), status (pending\|active), invited_at |
+| `course_assignments_team` | course_id, institution_user_id, role |
+
+---
+
+## Module 19 – Admin Portal (`/admin/`)
+
+**Pages and their Tabs**
+
+### 19a. Admin Dashboard (`/admin` — root)
+- Tabs on the page: **Recent Users · Recent Courses**
+- Stats: Total Users, Total Courses, Total Revenue, Active Users
+- Charts: Revenue & User Growth (area), Category Distribution (pie), Users by Country (bar)
+- System Alerts panel
+
+### 19b. Users (`/admin/users`)
+- Table: filter by role/status, search, activate/suspend/delete
+
+### 19c. Courses (`/admin/courses`)
+- Table: filter by status, approve/reject/unpublish
+
+### 19d. Analytics (`/admin/analytics`)
+- Platform-wide charts and KPIs
+
+### 19e. Revenue (`/admin/revenue`)
+- Platform revenue breakdown, instructor payouts overview
+
+### 19f. Payments (`/admin/payments`)
+- All transactions, refunds, disputes
+
+### 19g. Emails (`/admin/emails`)
+- Email campaign management
+
+### 19h. Messages (`/admin/messages`)
+- Support inbox
+
+### 19i. Content (`/admin/content`)
+- Content moderation (flagged content)
+
+### 19j. Security (`/admin/security`)
+- Audit logs, failed login attempts, IP bans
+
+### 19k. Settings (`/admin/settings`)
+- Platform-level settings (fees, currencies, maintenance mode)
+
+**Additional Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `platform_settings` | key, value, updated_at |
+| `audit_logs` | id, user_id, action, resource_type, resource_id, ip_address, created_at |
+| `system_alerts` | id, type (error\|warning\|info\|success), message, resolved_at |
+| `email_campaigns` | id, name, subject, body, status, sent_at, recipient_count |
+| `refunds` | id, payment_id, amount, reason, status, requested_at, resolved_at |
+| `content_reports` | id, reporter_id, content_type, content_id, reason, status, created_at |
+
+---
+
+## Module 20 – Employer Portal (`/employer/`)
+
+**Pages**
+- Landing page / Dashboard
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `employer_profiles` | user_id, company_name, industry, size, description, logo_url, website |
+| `employer_job_listings` | (see Module 9 `job_listings`) |
+| `talent_pool_searches` | employer_id, filters_json, results_count, searched_at |
+| `employer_student_contacts` | employer_id, student_id, message, status, created_at |
+
+---
+
+## Module 21 – Enterprise Portal (`/enterprise/`)
+
+**Pages**
+- Landing, Onboarding (`/enterprise/onboarding`), Enroll (`/enterprise/enroll`)
+
+**Required Database Tables**
+
+| Table | Key Fields |
+|---|---|
+| `enterprises` | id, name, domain, admin_user_id, plan, max_seats, created_at |
+| `enterprise_members` | enterprise_id, user_id, role, invited_at, joined_at |
+| `enterprise_course_licenses` | enterprise_id, course_id, seats_purchased, seats_used |
+| `enterprise_reports` | enterprise_id, report_type, generated_at, file_url |
+
+---
+
+## Module 22 – Onboarding (`/(student)/onboarding`)
+
+**Steps (multi-step wizard)**
+1. Personal Information
+2. Employment Status
+3. Career Goals
+4. Preferred Categories / Interests
+5. Skill Assessment
+
+**Required Database Tables** — Updates `student_profiles` (onboarding_step, onboarding_completed)
+
+---
+
+## Summary Table
+
+| # | Module | Portal | Key Page Tabs |
+|---|---|---|---|
+| 1 | Authentication | All | — |
+| 2 | Student Dashboard | Student | Sections (no tabs) |
+| 3 | Profile | Student | Overview · Experience · Education · Skills · Projects |
+| 4 | Settings | Student | Profile · Notifications · Privacy · Appearance · Data · Security · Billing |
+| 5 | My Learning | Student | In Progress · Completed · Saved |
+| 6 | Course Pool & Player | Student | Browse filters; player has Lessons · Overview · Q&A · Notes |
+| 7 | Certifications | Student | My Certificates · Skill Badges · Available |
+| 8 | Community | Student | Study Rooms · Accountability · Discover |
+| 9 | Careers | Student | Job Listings · My Applications · Talent Pool |
+| 10 | Skills | Student | My Skills · Assessments |
+| 11 | Performance | Student | Charts / sections |
+| 12 | Messages | Student & Instructor | Inbox list + chat |
+| 13 | Notifications | Student | List |
+| 14 | Diagnostics | Student | Insights sections |
+| 15 | Subscription | Student | Plan · Payments · Invoices |
+| 16 | Cohorts | Student | Upcoming · Active · Past |
+| 17 | Labs | Student | — |
+| 18 | Instructor Portal | Instructor | Courses · Students · Analytics · Revenue · Reviews · Assignments · Team |
+| 19 | Admin Portal | Admin | Users · Courses · Analytics · Revenue · Payments · Emails · Security · Settings |
+| 20 | Employer Portal | Employer | Dashboard · Talent Pool · Jobs |
+| 21 | Enterprise Portal | Enterprise | Onboarding · Enroll · Members · Reports |
+| 22 | Onboarding | Student | 5-step wizard |

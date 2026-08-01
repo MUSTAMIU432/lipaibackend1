@@ -1,0 +1,28 @@
+# Minimal requirements to run the Lost & Found server
+# Install these first to get the server running
+
+# Core Django dependencies
+Django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+psycopg2-binary==2.9.9
+python-decouple==3.8
+Pillow==10.1.0
+
+# Basic AI functionality (install after server works)
+# Uncomment these lines to install AI packages:
+# torch>=2.0.0
+# torchvision>=0.15.0
+# ultralytics>=8.0.0
+# transformers>=4.35.0
+# opencv-python>=4.8.0
+# numpy>=1.24.0
+# scikit-learn>=1.3.0
+# faiss-cpu>=1.7.0
+# pyzbar>=0.1.9
+# scrapy>=2.11.0
+# beautifulsoup4>=4.12.0
+# requests>=2.31.0
+
+# Authentication
+djangorestframework-simplejwt==5.3.0

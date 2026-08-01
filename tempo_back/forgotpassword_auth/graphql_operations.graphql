@@ -1,0 +1,53 @@
+# Paste into your Graphene / Apollo schema (names aligned with lipaidox frontend).
+
+enum PasswordOtpPurpose {
+  FORGOT_PASSWORD
+  INITIAL_PASSWORD
+}
+
+# --- Existing (forgot password, user already has backend password) ---
+
+# requestPasswordReset(input: RequestPasswordResetInput!): RequestPasswordResetPayload
+# verifyPasswordResetOtp(input: VerifyPasswordResetOtpInput!): Boolean
+# resetPassword(input: ResetPasswordInput!): Boolean
+
+input VerifyInitialPasswordOtpInput {
+  email: String!
+  otpCode: String!
+}
+
+# --- New: Google-linked user, no backend password yet (session required for request + set) ---
+
+input RequestInitialPasswordOtpInput {
+  # Optional if resolver uses session email only; keep for explicit match checks.
+  email: String!
+}
+
+type RequestInitialPasswordOtpPayload {
+  success: Boolean!
+  expiresInSeconds: Int
+}
+
+extend type Mutation {
+  """
+  Authenticated user (Google-linked, no backend password). Sends OTP email
+  with purpose INITIAL_PASSWORD.
+  """
+  requestInitialPasswordOtp(
+    input: RequestInitialPasswordOtpInput!
+  ): RequestInitialPasswordOtpPayload!
+
+  """Check INITIAL_PASSWORD OTP (same code as in email)."""
+  verifyInitialPasswordOtp(input: VerifyInitialPasswordOtpInput!): Boolean!
+
+  """
+  Authenticated same user. Verifies INITIAL_PASSWORD OTP then sets first backend password.
+  """
+  setInitialPasswordWithOtp(input: SetInitialPasswordWithOtpInput!): Boolean!
+}
+
+input SetInitialPasswordWithOtpInput {
+  email: String!
+  otpCode: String!
+  newPassword: String!
+}

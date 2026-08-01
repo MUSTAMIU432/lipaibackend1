@@ -1,0 +1,15 @@
+# Firebase / Google service account keys (never commit)
+firebase-service-account.json
+*-service-account*.json
+.env
+*.local.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local data / env
+db.sqlite3
+myenv/
+media/
+.claude/settings.local.json*

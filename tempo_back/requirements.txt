@@ -1,0 +1,74 @@
+# Django and Core Dependencies
+Django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+django-filter==23.3
+django-extensions==3.2.3
+
+# Database
+psycopg2-binary==2.9.9
+django-redis==5.4.0
+
+# GraphQL
+graphene-django==3.1.5
+django-graphql-jwt==0.3.4
+strawberry-graphql==0.215.0
+strawberry-graphql-django==0.15.0
+
+# WebSockets
+channels==4.0.0
+channels-redis==4.1.0
+
+# Celery
+celery==5.3.4
+django-celery-beat==2.5.0
+django-celery-results==2.5.0
+
+# Kafka
+kafka-python==2.3.0
+
+# Payment Gateways
+stripe==7.6.0
+requests==2.31.0
+cryptography==41.0.7
+
+# API Documentation
+drf-yasg==1.21.7
+
+# Authentication
+djangorestframework-simplejwt>=5.3.1
+google-auth>=2.29.0
+firebase-admin>=6.0.0  # optional at runtime (GIS works without); install for Firebase ID tokens
+
+# Utilities
+python-decouple==3.8
+Pillow==10.1.0
+python-dateutil==2.8.2
+
+# Notifications (Optional - for SMS and Push)
+twilio==8.10.0
+pyfcm==1.5.4
+
+# Development
+pytest==7.4.3
+pytest-django==4.7.0
+factory-boy==3.3.0
+black==23.11.0
+flake8==6.1.0
+isort==5.12.0
+
+# Production
+gunicorn==21.2.0
+whitenoise==6.6.0
+
+# Additional utilities for Lost & Found
+python-magic>=0.4.27
+imagehash>=4.3.1
+exifread>=3.0.0
+geopy>=2.4.0
+
+# Lost & Found discover_analyze endpoint (QR/deepfake fallbacks + price scraping + optional vision LLM)
+opencv-python-headless>=4.13.0
+pyzbar>=0.1.9
+beautifulsoup4>=4.15.0
+groq>=1.4.0

@@ -1,0 +1,7 @@
+# Local Firebase Admin key — never commit
+firebase-service-account.json
+firebase-service-account.local.json
+serviceAccount.local.json
+authjson.local.json
+authjson.json
+authjson_secrets.py
