@@ -1,4 +1,5 @@
 import strawberry
+from strawberry.scalars import JSON
 from typing import Optional, List
 from django.db import transaction
 from django.utils import timezone
@@ -131,7 +132,7 @@ class NotificationMutation:
         return NotificationGraphQLType.from_model(notification)
 
     @strawberry.mutation
-    def mark_all_notifications_read(self, info: strawberry.types.Info) -> dict:
+    def mark_all_notifications_read(self, info: strawberry.types.Info) -> JSON:
         """Mark all notifications as read"""
         user = require_auth(info)
         
@@ -140,7 +141,7 @@ class NotificationMutation:
         return {"message": f"Marked {count} notifications as read"}
 
     @strawberry.mutation
-    def delete_notification(self, info: strawberry.types.Info, notificationId: strawberry.ID) -> dict:
+    def delete_notification(self, info: strawberry.types.Info, notificationId: strawberry.ID) -> JSON:
         """Delete a notification"""
         user = require_auth(info)
         
@@ -259,7 +260,7 @@ class NotificationMutation:
         channel: str,
         subjectTemplate: Optional[str],
         bodyTemplate: str,
-        variablesSchema: Optional[dict]
+        variablesSchema: Optional[JSON]
     ) -> NotificationTemplateType:
         """Create notification template (admin only)"""
         user = require_auth(info)
@@ -285,7 +286,7 @@ class NotificationMutation:
         name: Optional[str],
         subjectTemplate: Optional[str],
         bodyTemplate: Optional[str],
-        variablesSchema: Optional[dict],
+        variablesSchema: Optional[JSON],
         isActive: Optional[bool]
     ) -> NotificationTemplateType:
         """Update notification template (admin only)"""
@@ -317,7 +318,7 @@ class NotificationMutation:
 
     # Queue Management Mutations
     @strawberry.mutation
-    def retry_failed_notifications(self, info: strawberry.types.Info, channel: Optional[str] = None) -> dict:
+    def retry_failed_notifications(self, info: strawberry.types.Info, channel: Optional[str] = None) -> JSON:
         """Retry failed notifications (admin only)"""
         user = require_auth(info)
         require_admin(user)
@@ -336,7 +337,7 @@ class NotificationMutation:
         return {"message": f"Retried {retried_count} failed notifications"}
 
     @strawberry.mutation
-    def cleanup_old_notifications(self, info: strawberry.types.Info, days: int = 30) -> dict:
+    def cleanup_old_notifications(self, info: strawberry.types.Info, days: int = 30) -> JSON:
         """Clean up old notifications (admin only)"""
         user = require_auth(info)
         require_admin(user)

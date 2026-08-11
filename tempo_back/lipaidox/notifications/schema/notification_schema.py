@@ -1,4 +1,5 @@
 import strawberry
+from strawberry.scalars import JSON
 from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
@@ -29,7 +30,7 @@ class NotificationType:
     entityId: Optional[strawberry.ID]
     actionUrl: Optional[str]
     actionText: Optional[str]
-    metadata: dict
+    metadata: JSON
     
     # Status
     isRead: bool
@@ -72,7 +73,7 @@ class NotificationQueueType:
     subject: Optional[str]
     content: str
     templateName: Optional[str]
-    templateData: dict
+    templateData: JSON
     
     # Status
     status: str
@@ -217,7 +218,7 @@ class NotificationTemplateType:
     channel: str
     subjectTemplate: Optional[str]
     bodyTemplate: str
-    variablesSchema: dict
+    variablesSchema: JSON
     isActive: bool
     priority: int
     createdAt: datetime
@@ -251,7 +252,7 @@ class NotificationDeliveryLogType:
     sentAt: Optional[datetime]
     deliveredAt: Optional[datetime]
     errorMessage: Optional[str]
-    response_data: dict
+    response_data: JSON
     provider: Optional[str]
     externalId: Optional[str]
     createdAt: datetime
@@ -282,13 +283,13 @@ class NotificationCreateInput:
     title: str
     message: str
     notificationType: str
-    priority: Optional[str]
-    entityType: Optional[str]
-    entityId: Optional[strawberry.ID]
-    actionUrl: Optional[str]
-    actionText: Optional[str]
-    metadata: Optional[dict]
-    expiresAt: Optional[datetime]
+    priority: Optional[str] = None
+    entityType: Optional[str] = None
+    entityId: Optional[strawberry.ID] = None
+    actionUrl: Optional[str] = None
+    actionText: Optional[str] = None
+    metadata: Optional[JSON] = None
+    expiresAt: Optional[datetime] = None
 
 
 @strawberry.input
@@ -297,64 +298,68 @@ class BulkNotificationInput:
     title: str
     message: str
     notificationType: str
-    priority: Optional[str]
-    entityType: Optional[str]
-    entityId: Optional[strawberry.ID]
-    actionUrl: Optional[str]
-    actionText: Optional[str]
-    metadata: Optional[dict]
+    priority: Optional[str] = None
+    entityType: Optional[str] = None
+    entityId: Optional[strawberry.ID] = None
+    actionUrl: Optional[str] = None
+    actionText: Optional[str] = None
+    metadata: Optional[JSON] = None
 
 
 @strawberry.input
 class NotificationPreferencesUpdateInput:
     # Email preferences
-    emailNewSubscriber: Optional[bool]
-    emailNewTip: Optional[bool]
-    emailPpvPurchase: Optional[bool]
-    emailKycApproved: Optional[bool]
-    emailKycRejected: Optional[bool]
-    emailPayoutCompleted: Optional[bool]
-    emailNewContent: Optional[bool]
-    emailCreatorLive: Optional[bool]
-    emailAnnouncement: Optional[bool]
-    emailSystemUpdate: Optional[bool]
-    emailSecurityAlert: Optional[bool]
+    emailNewSubscriber: Optional[bool] = None
+    emailNewTip: Optional[bool] = None
+    emailPpvPurchase: Optional[bool] = None
+    emailKycApproved: Optional[bool] = None
+    emailKycRejected: Optional[bool] = None
+    emailPayoutCompleted: Optional[bool] = None
+    emailNewContent: Optional[bool] = None
+    emailCreatorLive: Optional[bool] = None
+    emailAnnouncement: Optional[bool] = None
+    emailSystemUpdate: Optional[bool] = None
+    emailSecurityAlert: Optional[bool] = None
     
     # Push preferences
-    pushNewSubscriber: Optional[bool]
-    pushNewTip: Optional[bool]
-    pushPpvPurchase: Optional[bool]
-    pushKycApproved: Optional[bool]
-    pushKycRejected: Optional[bool]
-    pushPayoutCompleted: Optional[bool]
-    pushNewContent: Optional[bool]
-    pushCreatorLive: Optional[bool]
-    pushAnnouncement: Optional[bool]
-    pushSystemUpdate: Optional[bool]
-    pushSecurityAlert: Optional[bool]
+    pushNewSubscriber: Optional[bool] = None
+    pushNewTip: Optional[bool] = None
+    pushPpvPurchase: Optional[bool] = None
+    pushKycApproved: Optional[bool] = None
+    pushKycRejected: Optional[bool] = None
+    pushPayoutCompleted: Optional[bool] = None
+    pushNewContent: Optional[bool] = None
+    pushCreatorLive: Optional[bool] = None
+    pushAnnouncement: Optional[bool] = None
+    pushSystemUpdate: Optional[bool] = None
+    pushSecurityAlert: Optional[bool] = None
     
     # SMS preferences
-    smsSecurityAlert: Optional[bool]
-    smsKycApproved: Optional[bool]
-    smsKycRejected: Optional[bool]
-    smsPayoutCompleted: Optional[bool]
+    smsSecurityAlert: Optional[bool] = None
+    smsKycApproved: Optional[bool] = None
+    smsKycRejected: Optional[bool] = None
+    smsPayoutCompleted: Optional[bool] = None
     
     # Global preferences
-    doNotDisturb: Optional[bool]
-    doNotDisturbStart: Optional[str]
-    doNotDisturbEnd: Optional[str]
-    timezone: Optional[str]
-    maxDailyEmails: Optional[int]
-    maxDailyPush: Optional[int]
-    maxDailySms: Optional[int]
+    doNotDisturb: Optional[bool] = None
+    doNotDisturbStart: Optional[str] = None
+    doNotDisturbEnd: Optional[str] = None
+    timezone: Optional[str] = None
+    maxDailyEmails: Optional[int] = None
+    maxDailyPush: Optional[int] = None
+    maxDailySms: Optional[int] = None
 
 
 @strawberry.input
 class NotificationFilterInput:
-    unreadOnly: Optional[bool]
-    notificationType: Optional[str]
-    priority: Optional[str]
-    limit: Optional[int]
+    # `= None` is load-bearing, not cosmetic: without it strawberry still exposes
+    # the field as nullable in the SDL but generates a dataclass __init__ that
+    # requires the keyword, so a client sending only a subset of the filter gets
+    # a TypeError at resolve time instead of the documented behaviour.
+    unreadOnly: Optional[bool] = None
+    notificationType: Optional[str] = None
+    priority: Optional[str] = None
+    limit: Optional[int] = None
 
 
 # Analytics Types
@@ -362,6 +367,6 @@ class NotificationFilterInput:
 class NotificationStats:
     totalNotifications: int
     unreadCount: int
-    byType: dict
-    byPriority: dict
-    deliveryStats: dict
+    byType: JSON
+    byPriority: JSON
+    deliveryStats: JSON

@@ -242,21 +242,21 @@ class TwoFAAttemptType:
 @strawberry.input
 class TwoFASetupInput:
     method: str
-    phoneNumber: Optional[str]
-    email: Optional[str]
+    phoneNumber: Optional[str] = None
+    email: Optional[str] = None
 
 
 @strawberry.input
 class TwoFAVerifyInput:
     code: str
-    method: Optional[str]
+    method: Optional[str] = None
 
 
 @strawberry.input
 class SecuritySettingsUpdateInput:
-    loginNotificationEmail: Optional[bool]
-    loginNotificationSms: Optional[bool]
-    trustedIps: Optional[List[str]]
+    loginNotificationEmail: Optional[bool] = None
+    loginNotificationSms: Optional[bool] = None
+    trustedIps: Optional[List[str]] = None
 
 
 @strawberry.input

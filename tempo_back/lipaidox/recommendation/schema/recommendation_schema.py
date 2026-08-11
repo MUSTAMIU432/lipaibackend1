@@ -280,14 +280,14 @@ class UserInterestProfileType:
 # Input Types
 @strawberry.input
 class RecordInteractionInput:
-    contentId: Optional[strawberry.ID]
-    creatorId: Optional[strawberry.ID]
+    contentId: Optional[strawberry.ID] = None
+    creatorId: Optional[strawberry.ID] = None
     interactionType: str
-    watchDurationS: Optional[int]
-    completionRate: Optional[Decimal]
-    source: Optional[str]
-    deviceType: Optional[str]
-    sessionId: Optional[str]
+    watchDurationS: Optional[int] = None
+    completionRate: Optional[Decimal] = None
+    source: Optional[str] = None
+    deviceType: Optional[str] = None
+    sessionId: Optional[str] = None
 
 
 @strawberry.input

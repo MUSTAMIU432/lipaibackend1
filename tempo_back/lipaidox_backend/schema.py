@@ -85,6 +85,8 @@ from lipaidox.lms_onboarding.queries import LmsOnboardingQueries
 from lipaidox.lms_onboarding.mutations import LmsOnboardingMutations
 from lipaidox.messaging.queries import MessagingQueries
 from lipaidox.messaging.mutations import MessagingMutations
+from lipaidox.notifications.queries import NotificationQuery
+from lipaidox.notifications.mutations import NotificationMutation
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +99,11 @@ class Query(
     UsernameQuery,
     MembershipQuery,
     ReviewQuery,
+    # Creator-platform notifications. Must stay AHEAD of LmsNotificationQueries:
+    # both classes define `my_notifications`, and MRO gives the field to the first
+    # base listed. The creator resolver is the one the apps query (it returns the
+    # richer NotificationType with recipientId/priority/entityType).
+    NotificationQuery,
     StudentQueries,
     ContentQueries,
     LearningQueries,
@@ -146,6 +153,10 @@ class Mutation(
     ProfileMutation,
     MembershipMutation,
     ReviewMutation,
+    # See the note on NotificationQuery above — same collision on
+    # mark_notification_read / mark_all_notifications_read / create_notification /
+    # delete_notification, resolved the same way.
+    NotificationMutation,
     ProfileMutations,
     ContentMutations,
     LearningMutations,

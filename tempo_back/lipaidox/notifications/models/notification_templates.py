@@ -1,7 +1,7 @@
 import uuid
 from django.db import models
 from multitenant.models import TenantAwareModel
-from .notification import DeliveryChannel, NotificationStatus
+from .enums import DeliveryChannel, NotificationStatus
 
 
 class NotificationTemplate(TenantAwareModel):
@@ -36,8 +36,8 @@ class NotificationTemplate(TenantAwareModel):
         db_table = 'notification_templates'
         app_label = 'lipaidox_notifications'
         indexes = [
-            models.Index(fields=['notification_type', 'channel'], name='idx_notification_templates_type_channel'),
-            models.Index(fields=['is_active'], name='idx_notification_templates_active'),
+            models.Index(fields=['notification_type', 'channel'], name='idx_notif_tmpl_type_channel'),
+            models.Index(fields=['is_active'], name='idx_notif_tmpl_active'),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -130,86 +130,7 @@ class NotificationTemplate(TenantAwareModel):
         return created_templates
 
 
-class NotificationDeliveryLog(TenantAwareModel):
-    """
-    Notification Delivery Log - Module 17
-    Log of all notification delivery attempts
-    """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    notification = models.ForeignKey(
-        'Notification',
-        on_delete=models.CASCADE,
-        related_name='delivery_logs'
-    )
-    queue_entry = models.ForeignKey(
-        'NotificationQueue',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='delivery_logs'
-    )
-    channel = models.CharField(
-        max_length=20,
-        choices=DeliveryChannel.choices
-    )
-    recipient_address = models.CharField(max_length=255)
-    
-    # Delivery details
-    status = models.CharField(
-        max_length=15,
-        choices=NotificationStatus.choices
-    )
-    sent_at = models.DateTimeField(null=True, blank=True)
-    delivered_at = models.DateTimeField(null=True, blank=True)
-    error_message = models.TextField(null=True, blank=True)
-    response_data = models.JSONField(default=dict)
-    
-    # Provider information
-    provider = models.CharField(max_length=50, null=True, blank=True)
-    external_id = models.CharField(max_length=100, null=True, blank=True)
-    
-    # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = 'notification_delivery_log'
-        app_label = 'lipaidox_notifications'
-        indexes = [
-            models.Index(fields=['notification'], name='idx_delivery_log_notification'),
-            models.Index(fields=['channel'], name='idx_delivery_log_channel'),
-            models.Index(fields=['status'], name='idx_delivery_log_status'),
-            models.Index(fields=['created_at'], name='idx_delivery_log_created'),
-        ]
-
-    def __str__(self):
-        return f"Delivery Log: {self.channel} - {self.status}"
-
-    @classmethod
-    def log_delivery(cls, notification, channel, recipient_address, status, **kwargs):
-        """Log a delivery attempt"""
-        return cls.objects.create(
-            notification=notification,
-            tenant=notification.tenant,
-            channel=channel,
-            recipient_address=recipient_address,
-            status=status,
-            **kwargs
-        )
-
-    @classmethod
-    def get_delivery_stats(cls, notification_id=None, days=7):
-        """Get delivery statistics"""
-        from django.db.models import Count
-        from django.utils import timezone
-        from datetime import timedelta
-        
-        cutoff_date = timezone.now() - timedelta(days=days)
-        
-        queryset = cls.objects.filter(created_at__gte=cutoff_date)
-        
-        if notification_id:
-            queryset = queryset.filter(notification_id=notification_id)
-        
-        stats = queryset.values('status', 'channel').annotate(count=Count('id'))
-        
-        return {f"{stat['channel']}_{stat['status']}": stat['count'] for stat in stats}
+# NOTE: a second copy of NotificationDeliveryLog used to live here. It duplicated
+# the canonical model in notification_delivery_logs.py (same app label, same
+# db_table), so importing this module raised Django's conflicting-models error and
+# kept the whole notifications GraphQL surface unloadable. Use the canonical one.

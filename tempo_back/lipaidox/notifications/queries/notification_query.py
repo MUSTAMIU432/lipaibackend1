@@ -1,4 +1,5 @@
 import strawberry
+from strawberry.scalars import JSON
 from typing import Optional, List
 from django.db.models import Q, Count, Avg, F
 from django.utils import timezone
@@ -212,7 +213,7 @@ class NotificationQuery:
         self,
         info: strawberry.types.Info,
         days: int = 30
-    ) -> dict:
+    ) -> JSON:
         """Get platform notification statistics (admin only)"""
         user = require_auth(info)
         require_admin(user)
@@ -263,7 +264,7 @@ class NotificationQuery:
         self,
         info: strawberry.types.Info,
         days: int = 30
-    ) -> dict:
+    ) -> JSON:
         """Get notification engagement statistics (admin only)"""
         user = require_auth(info)
         require_admin(user)

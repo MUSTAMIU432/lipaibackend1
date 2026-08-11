@@ -83,6 +83,27 @@ class ContentQuery:
         return [ContentType.from_model(c) for c in queryset]
 
     @strawberry.field
+    def creator_content(self, info: strawberry.types.Info, username: str) -> List[ContentType]:
+        """One creator's published content, addressed by username.
+
+        Backs the public profile grid. Clients otherwise have to pull the whole
+        public feed and filter it client-side, which costs a full scan per
+        profile view and silently truncates once the feed is paginated.
+        """
+        tenant = get_current_tenant()
+        queryset = (
+            Content.objects.filter(
+                tenant=tenant,
+                status='published',
+                creator__username=username,
+            )
+            .select_related('creator')
+            .prefetch_related('media')
+            .order_by('-published_at')
+        )
+        return [ContentType.from_model(c) for c in queryset]
+
+    @strawberry.field
     def all_public_series(self, info: strawberry.types.Info) -> List[ContentSeriesType]:
         tenant = get_current_tenant()
         queryset = ContentSeries.objects.filter(tenant=tenant).order_by('-created_at')

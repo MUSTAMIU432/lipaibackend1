@@ -1,7 +1,7 @@
 import uuid
 from django.db import models
 from multitenant.models import TenantAwareModel
-from .notification import DeliveryChannel, NotificationStatus
+from .enums import DeliveryChannel, NotificationStatus
 
 
 class NotificationQueue(TenantAwareModel):
@@ -52,8 +52,8 @@ class NotificationQueue(TenantAwareModel):
         indexes = [
             models.Index(fields=['status'], name='idx_notification_queue_status'),
             models.Index(fields=['channel'], name='idx_notification_queue_channel'),
-            models.Index(fields=['scheduled_at'], name='idx_notification_queue_scheduled'),
-            models.Index(fields=['priority', 'status'], name='idx_notification_queue_priority_status'),
+            models.Index(fields=['scheduled_at'], name='idx_notif_queue_scheduled'),
+            models.Index(fields=['priority', 'status'], name='idx_notif_queue_prio_status'),
             models.Index(fields=['created_at'], name='idx_notification_queue_created'),
         ]
 

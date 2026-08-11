@@ -49,6 +49,12 @@ class NotificationChannel(models.TextChoices):
     PUSH = 'push', 'Push'
 
 
+# The queue/template models and the GraphQL schema import this name for the same
+# set of channels. Kept as an alias rather than a second enum so the two can
+# never drift apart.
+DeliveryChannel = NotificationChannel
+
+
 class NotificationStatus(models.TextChoices):
     """Notification status"""
     PENDING = 'pending', 'Pending'
