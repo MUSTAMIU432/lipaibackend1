@@ -225,6 +225,35 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # -----------------------------
+# Password Hashing
+# -----------------------------
+# Django's default PBKDF2 runs 600,000 SHA256 iterations — ~0.15s on a dev laptop
+# and ~0.5-0.8s on the production VPS. Registration pays that twice (hash on
+# create, verify on the immediate sign-in), which is the single largest component
+# of "creating an account takes forever": ~1s per auth call, all CPU, no network.
+#
+# Argon2id is both faster here and stronger (memory-hard). PBKDF2 stays in the
+# list so existing passwords keep verifying; Django transparently re-hashes each
+# one to Argon2 on the user's next successful login.
+#
+# Requires: pip install argon2-cffi   (guarded — without the package the settings
+# fall back to stock Django behaviour instead of failing to boot).
+try:
+    import argon2  # noqa: F401
+
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.Argon2PasswordHasher",
+        "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+        "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+        "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    ]
+except ImportError:
+    _settings_log.warning(
+        "argon2-cffi is not installed — falling back to PBKDF2 (600k iterations). "
+        "Sign-up and login will each spend ~0.5s hashing. Install argon2-cffi to fix."
+    )
+
+# -----------------------------
 # Internationalization
 # -----------------------------
 LANGUAGE_CODE = "en-us"
@@ -269,6 +298,26 @@ CORS_ALLOW_HEADERS = [
     "origin",
     "x-tenant-id",
     "x-requested-with",
+]
+
+# Outside DEBUG nothing is allowed by default, so a deployed frontend on its own
+# domain gets no `Access-Control-Allow-Origin` and every browser request fails.
+# List the frontend origins here (scheme + host, no trailing slash), e.g.
+#   CORS_ALLOWED_ORIGINS=https://frontlipaidox.eopsprimax.com
+CORS_ALLOWED_ORIGINS = [
+    o.strip().rstrip("/")
+    for o in config("CORS_ALLOWED_ORIGINS", default="").split(",")
+    if o.strip()
+]
+
+# Same origins must be trusted for CSRF (Django admin, session-authenticated
+# POSTs and any form posted from the frontend domain).
+CSRF_TRUSTED_ORIGINS = [
+    o.strip().rstrip("/")
+    for o in config(
+        "CSRF_TRUSTED_ORIGINS", default=",".join(CORS_ALLOWED_ORIGINS)
+    ).split(",")
+    if o.strip()
 ]
 
 # -----------------------------

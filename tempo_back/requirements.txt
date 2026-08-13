@@ -72,3 +72,7 @@ opencv-python-headless>=4.13.0
 pyzbar>=0.1.9
 beautifulsoup4>=4.15.0
 groq>=1.4.0
+
+# Argon2id password hashing — ~10x faster than PBKDF2-600k at sign-up/login,
+# and memory-hard. Enables the PASSWORD_HASHERS block in settings.py.
+argon2-cffi>=23.1.0
