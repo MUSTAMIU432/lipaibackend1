@@ -24,14 +24,28 @@ from django.conf import settings
 
 
 def _resolve(binary: str, setting_name: str) -> str:
+    # 1. An explicit path in settings always wins.
     configured = getattr(settings, setting_name, "")
     if configured:
         return configured
+    # 2. A system install on PATH.
     found = shutil.which(binary)
     if found:
         return found
+    # 3. A static build dropped in ~/bin (hosts without a system package).
     fallback = Path.home() / "bin" / binary
-    return str(fallback) if fallback.exists() else binary
+    if fallback.exists():
+        return str(fallback)
+    # 4. The pip-installed static binary, if present — portable last resort.
+    if binary == "ffmpeg":
+        try:
+            import imageio_ffmpeg
+
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            pass
+    # 5. Give up gracefully — the caller surfaces a clean "ffmpeg not found".
+    return binary
 
 
 def ffmpeg_bin() -> str:

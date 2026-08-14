@@ -418,126 +418,59 @@ class ContentMutation:
     @require_creator
     def trim_content_video(self, info: strawberry.types.Info, input: TrimVideoInput) -> TrimVideoResult:
         """
-        Server-side video trim using FFmpeg.
-        Reads the existing media file, trims to [startTime, endTime],
-        saves the result as a new file, and updates the ContentMedia record.
+        Server-side video trim.
+
+        Delegates to the shared media_processor trim service so there is ONE
+        tested trim path across the app (see
+        lipaidox/media_processor/{video_ops,services}.py) rather than a second
+        ffmpeg invocation maintained here. That path is frame-accurate
+        (re-encode) and writes a streamable result, and it leaves the original
+        file untouched so a trim can never destroy the source.
         """
-        import os
-        import uuid
-        import subprocess
-        from django.conf import settings
+        from lipaidox.media_processor.services import trim_content_media
+        from lipaidox.media_processor.video_ops import VideoOpError
 
         user = info.context.request.user
 
-        # Ownership checks
-        content = Content.objects.get(id=input.contentId)
+        # ── Ownership ────────────────────────────────────────────────────────
+        try:
+            content = Content.objects.get(id=input.contentId)
+        except Content.DoesNotExist:
+            raise Exception("Content not found.")
         if content.creator.user != user:
             raise Exception("You can only trim media belonging to your own content.")
 
-        media_obj = ContentMedia.objects.get(id=input.mediaId)
+        try:
+            media_obj = ContentMedia.objects.get(id=input.mediaId)
+        except ContentMedia.DoesNotExist:
+            raise Exception("Media not found.")
         if media_obj.content_id != content.id:
             raise Exception("Media does not belong to the specified content.")
+        if str(media_obj.media_type).lower() != "video":
+            raise Exception("Only video media can be trimmed.")
 
-        # Validate trim range
+        # ── Range validation (the service re-checks against real duration) ──
         start = float(input.startTime)
         end = float(input.endTime)
         if start < 0 or end <= start:
             raise Exception("Invalid trim range: endTime must be greater than startTime.")
-        if (end - start) < 0.1:
-            raise Exception("Trim duration must be at least 0.1 seconds.")
 
-        # Resolve source file path from URL
-        media_url = media_obj.file_url  # e.g. "/media/content/<uid>/abc.mp4"
-        media_root = str(settings.MEDIA_ROOT)
-        media_url_prefix = settings.MEDIA_URL  # "/media/"
-
-        if media_url.startswith(media_url_prefix):
-            rel_path = media_url[len(media_url_prefix):]
-        else:
-            rel_path = media_url.lstrip("/")
-        src_path = os.path.join(media_root, rel_path)
-
-        if not os.path.isfile(src_path):
-            raise Exception(f"Source media file not found on server: {rel_path}")
-
-        # Resolve FFmpeg binary (system or bundled via imageio_ffmpeg)
-        ffmpeg_bin = "ffmpeg"
+        # ── Apply via the shared service ────────────────────────────────────
         try:
-            import shutil
-            if not shutil.which("ffmpeg"):
-                import imageio_ffmpeg
-                ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            pass
-
-        # Output file alongside original
-        src_dir = os.path.dirname(src_path)
-        src_ext = os.path.splitext(src_path)[1] or ".mp4"
-        out_name = f"{uuid.uuid4().hex}-trimmed{src_ext}"
-        out_path = os.path.join(src_dir, out_name)
-
-        duration = end - start
-        ffmpeg_cmd = [
-            ffmpeg_bin,
-            "-y",                      # overwrite
-            "-ss", str(start),         # seek BEFORE input for speed
-            "-t",  str(duration),
-            "-i",  src_path,
-            "-c:v", "copy",            # stream copy — no re-encode, fast
-            "-c:a", "copy",
-            "-avoid_negative_ts", "make_zero",
-            out_path,
-        ]
-        try:
-            result = subprocess.run(
-                ffmpeg_cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-            if result.returncode != 0:
-                logger.error("ffmpeg trim failed: %s", result.stderr[-1000:])
-                raise Exception("FFmpeg trim failed. " + (result.stderr[-300:] if result.stderr else ""))
-        except subprocess.TimeoutExpired:
-            raise Exception("Video trim timed out (>5 min). Try a shorter clip.")
-
-        # Get output file info
-        out_size = os.path.getsize(out_path)
-
-        # Compute output duration via ffprobe (best-effort)
-        out_duration: Optional[float] = None
-        try:
-            probe_bin = ffmpeg_bin.replace("ffmpeg", "ffprobe")
-            if not os.path.isfile(probe_bin):
-                probe_bin = "ffprobe"
-            probe_cmd = [
-                probe_bin, "-v", "quiet",
-                "-show_entries", "format=duration",
-                "-of", "csv=p=0",
-                out_path,
-            ]
-            probe = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=15)
-            out_duration = float(probe.stdout.strip()) if probe.stdout.strip() else None
-        except Exception:
-            out_duration = duration  # fallback to requested duration
-
-        # Build new media URL
-        user_dir_rel = os.path.relpath(src_dir, media_root)
-        out_url = f"{media_url_prefix}{user_dir_rel}/{out_name}".replace("\\", "/")
-
-        # Update the ContentMedia record to point to the trimmed file
-        with transaction.atomic():
-            media_obj.file_url = out_url
-            media_obj.file_size_bytes = out_size
-            if out_duration is not None:
-                media_obj.duration_seconds = int(round(out_duration))
-            media_obj.save(update_fields=["file_url", "file_size_bytes", "duration_seconds"])
+            media_obj = trim_content_media(media_obj, start, end)
+        except VideoOpError as exc:
+            logger.warning("trim_content_video failed for media %s: %s", input.mediaId, exc)
+            raise Exception(f"Video trim failed: {exc}")
 
         return TrimVideoResult(
             mediaId=strawberry.ID(str(media_obj.id)),
-            fileUrl=out_url,
-            durationSeconds=out_duration,
-            fileSizeBytes=out_size,
+            fileUrl=media_obj.file_url,
+            durationSeconds=(
+                float(media_obj.duration_seconds)
+                if media_obj.duration_seconds is not None
+                else None
+            ),
+            fileSizeBytes=media_obj.file_size_bytes,
         )
     @strawberry.mutation
     @require_creator
