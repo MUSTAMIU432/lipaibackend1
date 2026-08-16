@@ -375,6 +375,17 @@ class UserMutation:
         normalized_email = normalize_signup_email(input.email)
         validate_signup_password(input.password)
 
+        # Age gate (16+). Enforced here so a tampered frontend can't bypass it.
+        dob = getattr(input, "dateOfBirth", None)
+        if dob is not None:
+            from datetime import date as _date
+            today = _date.today()
+            if dob > today:
+                raise Exception("Date of birth cannot be in the future.")
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            if age < 16:
+                raise Exception("Your age is not eligible to use this app.")
+
         if email_already_registered(normalized_email, tenant.id):
             raise Exception(
                 "This email is already registered. Sign in or use forgot password."
@@ -388,6 +399,19 @@ class UserMutation:
                 role=input.role or UserRoles.FAN,
                 tenant=tenant,
             )
+            # Persist the optional profile fields collected at signup.
+            update_fields = []
+            if getattr(input, "firstName", None):
+                user.first_name = input.firstName.strip()
+                update_fields.append("first_name")
+            if getattr(input, "lastName", None):
+                user.last_name = input.lastName.strip()
+                update_fields.append("last_name")
+            if dob is not None:
+                user.date_of_birth = dob
+                update_fields.append("date_of_birth")
+            if update_fields:
+                user.save(update_fields=update_fields)
 
         return UserType.from_model(user)
 
