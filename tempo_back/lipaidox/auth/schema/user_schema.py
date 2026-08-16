@@ -59,6 +59,11 @@ class UserInput:
     email: str
     password: str
     role: Optional[str] = "fan"
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    # Required for the 16+ age gate; validated server-side in create_user so the
+    # frontend check can't be bypassed.
+    dateOfBirth: Optional[date] = None
 
 @strawberry.input
 class UserUpdateInput:
