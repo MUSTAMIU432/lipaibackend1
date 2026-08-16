@@ -23,7 +23,8 @@ def _require_user(info):
 class ContentCommentMutation:
     @strawberry.mutation
     def create_content_comment(
-        self, info, content_id: strawberry.ID, body: str
+        self, info, content_id: strawberry.ID, body: str,
+        parent_id: strawberry.ID | None = None,
     ) -> CreateContentCommentPayload:
         user = _require_user(info)
         content = get_content(content_id)
@@ -32,9 +33,24 @@ class ContentCommentMutation:
             raise Exception("Comment cannot be empty")
         if len(clean) > BODY_MAX:
             raise Exception(f"Comment must be at most {BODY_MAX} characters")
+
+        parent = None
+        if parent_id:
+            parent = (
+                ContentComment.objects.filter(
+                    id=parent_id, content=content, deleted_at__isnull=True
+                ).first()
+            )
+            if parent is None:
+                raise Exception("The comment you're replying to no longer exists")
+            # Keep the thread two levels deep: a reply to a reply attaches to the
+            # same top-level comment (YouTube-style), never nesting further.
+            if parent.parent_id:
+                parent = parent.parent
+
         comment = ContentComment.objects.create(
             author=user, content=content, tenant=getattr(user, "tenant", None),
-            body=clean, status=ContentCommentStatus.PUBLISHED,
+            body=clean, status=ContentCommentStatus.PUBLISHED, parent=parent,
         )
         return CreateContentCommentPayload(comment=build_content_comment_type(comment))
 

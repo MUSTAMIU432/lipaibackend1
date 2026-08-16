@@ -23,6 +23,12 @@ class ContentComment(TenantAwareModel):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="content_comments"
     )
     content = models.ForeignKey(Content, on_delete=models.CASCADE, related_name="comments")
+    # A reply points at its top-level parent comment. Threads are two levels deep
+    # (comment → replies), YouTube-style: a "reply to a reply" is re-parented to
+    # the same top-level comment so the tree never nests further. Null = top level.
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies"
+    )
     body = models.TextField()
     status = models.CharField(
         max_length=20, choices=ContentCommentStatus.choices, default=ContentCommentStatus.PUBLISHED
@@ -39,6 +45,7 @@ class ContentComment(TenantAwareModel):
             models.Index(fields=["author"]),
             models.Index(fields=["status"]),
             models.Index(fields=["content", "status", "created_at"]),
+            models.Index(fields=["parent", "status", "created_at"]),
         ]
 
     def __str__(self):

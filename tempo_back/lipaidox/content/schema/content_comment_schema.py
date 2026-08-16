@@ -20,6 +20,10 @@ class ContentCommentType:
     status: str
     createdAt: datetime
     updatedAt: datetime
+    # Threading: parentId is null for top-level comments; replyCount is the number
+    # of published replies on a top-level comment (0 for replies themselves).
+    parentId: Optional[strawberry.ID] = None
+    replyCount: int = 0
 
 
 @strawberry.type
