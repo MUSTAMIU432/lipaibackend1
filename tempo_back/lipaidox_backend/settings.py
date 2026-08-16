@@ -5,6 +5,7 @@ Django settings for lipaidox_backend project.
 import json
 import logging
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlparse
 
 from decouple import AutoConfig
 from django.core.exceptions import ImproperlyConfigured
@@ -203,6 +204,25 @@ if config("USE_SQLITE", default=False, cast=bool):
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+elif config("DATABASE_URL", default=""):
+    # Managed hosts (Render, Heroku, Fly) inject a single DATABASE_URL rather
+    # than the discrete DB_* vars below. Parsed with the stdlib so this needs no
+    # extra dependency. sslmode=require is the default for external Postgres
+    # hosts; an internal hostname ignores it harmlessly.
+    _db = urlparse(config("DATABASE_URL"))
+    _db_options = dict(parse_qsl(_db.query))
+    _db_options.setdefault("sslmode", "require")
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": unquote(_db.path).lstrip("/"),
+            "USER": unquote(_db.username or ""),
+            "PASSWORD": unquote(_db.password or ""),
+            "HOST": _db.hostname or "",
+            "PORT": str(_db.port or "5432"),
+            "OPTIONS": _db_options,
         }
     }
 else:
