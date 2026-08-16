@@ -159,6 +159,9 @@ AUTH_USER_MODEL = "lipaidox_auth.User"
 # -----------------------------
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Must sit directly after SecurityMiddleware so it can serve static files
+    # before any other middleware runs.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -265,6 +268,18 @@ USE_TZ = True
 # Static Files
 # -----------------------------
 STATIC_URL = "static/"
+# collectstatic target. Required in production (Render runs collectstatic at
+# build time); harmless locally where DEBUG serves static from the apps.
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# WhiteNoise serves the collected files from the app process, so no separate
+# web server or CDN is needed for admin/GraphiQL assets. Compressed (not
+# Manifest) storage: a manifest fails the build on any missing asset reference.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # -----------------------------
@@ -495,6 +510,10 @@ GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS = config(
 # Web redirect URL registered in Google Cloud Console (exact string match).
 # Required for GraphQL `googleOauthAuthorizationUrl`; if empty, that query returns "".
 GOOGLE_OAUTH_REDIRECT_URI = config("GOOGLE_OAUTH_REDIRECT_URI", default="").strip()
+# Confidential — only the redirect-based authorization-code exchange uses it; the
+# native mobile flow verifies the ID token against Google's public certs and does
+# NOT need a secret. Server-side only; never exposed to a client.
+GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET", default="").strip()
 GOOGLE_OAUTH_SCOPES = config(
     "GOOGLE_OAUTH_SCOPES",
     default="openid email profile",

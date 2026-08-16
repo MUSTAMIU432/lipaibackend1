@@ -5,3 +5,6 @@
 !.env.example
 __pycache__/
 *.pyc
+
+# Django collectstatic output (regenerated at build time)
+staticfiles/
