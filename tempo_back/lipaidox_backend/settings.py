@@ -87,6 +87,16 @@ _allowed = [
     if h.strip()
 ]
 ALLOWED_HOSTS = _allowed or ["127.0.0.1", "localhost", "10.0.2.2"]
+
+# Render injects the service's public hostname as RENDER_EXTERNAL_HOSTNAME. Add
+# it (and the wildcard) automatically so a Render deploy serves requests without
+# anyone remembering to list the *.onrender.com host in the ALLOWED_HOSTS env var.
+_render_host = config("RENDER_EXTERNAL_HOSTNAME", default="")
+if _render_host and _render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_host)
+if ".onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".onrender.com")
+
 # In DEBUG, accept any Host header so LAN-IP access from a physical device works
 # without listing every IP. Production must set ALLOWED_HOSTS explicitly.
 if DEBUG:

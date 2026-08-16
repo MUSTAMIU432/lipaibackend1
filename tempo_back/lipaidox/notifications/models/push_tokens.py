@@ -8,6 +8,7 @@ class PushPlatform(models.TextChoices):
     FCM = 'fcm', 'Firebase Cloud Messaging'
     APNS = 'apns', 'Apple Push Notification Service'
     WEB_PUSH = 'web_push', 'Web Push'
+    EXPO = 'expo', 'Expo Push Service'
 
 
 class PushToken(TenantAwareModel):

@@ -25,12 +25,27 @@ class Notification(TenantAwareModel):
         default=NotificationPriority.NORMAL
     )
 
+    # Optional sender (who triggered this — a creator who posted, a fan who tipped…)
+    sender = models.ForeignKey(
+        'lipaidox_auth.User',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notifications_sent',
+    )
+
     # Content
     title = models.CharField(max_length=255)
     body = models.TextField()
     image_url = models.URLField(null=True, blank=True)
     action_url = models.URLField(null=True, blank=True)
     action_label = models.CharField(max_length=100, null=True, blank=True)
+    action_text = models.CharField(max_length=100, null=True, blank=True)
+
+    # Generic link to the row this notification is about (e.g. a Content id), so
+    # clients can deep-link the tap without a dedicated FK per entity type.
+    entity_type = models.CharField(max_length=50, null=True, blank=True)
+    entity_id = models.CharField(max_length=64, null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
 
     # Source References (commented out until models exist)
     # triggered_by_user = models.ForeignKey(
@@ -127,6 +142,21 @@ class Notification(TenantAwareModel):
     def __str__(self):
         return f"Notification: {self.user.username} - {self.title}"
 
+    # Aliases: the GraphQL layer and delivery helpers speak "recipient"/"message";
+    # the stored columns are `user`/`body`. Expose both names so the two never
+    # need to be kept in sync by hand.
+    @property
+    def recipient(self):
+        return self.user
+
+    @property
+    def recipient_id(self):
+        return self.user_id
+
+    @property
+    def message(self):
+        return self.body
+
     def mark_read(self):
         """Mark notification as read"""
         from django.utils import timezone
@@ -161,8 +191,17 @@ class Notification(TenantAwareModel):
         return timezone.now() > self.expires_at
 
     @classmethod
-    def create_notification(cls, user, title, body, notification_type, **kwargs):
-        """Create a new notification"""
+    def create_notification(cls, title, notification_type, user=None, recipient=None,
+                            body=None, message=None, **kwargs):
+        """Create a new notification.
+
+        Accepts either naming convention: ``user``/``recipient`` for the target
+        and ``body``/``message`` for the text, so both the GraphQL mutations and
+        internal callers can use whichever reads clearest.
+        """
+        user = user or recipient
+        if body is None:
+            body = message or ""
         return cls.objects.create(
             user=user,
             tenant=user.tenant,
@@ -225,8 +264,16 @@ class Notification(TenantAwareModel):
         ).delete()[0]
 
     @classmethod
-    def bulk_create_notifications(cls, users, title, body, notification_type, **kwargs):
-        """Create notifications for multiple users"""
+    def bulk_create_notifications(cls, users=None, title=None, notification_type=None,
+                                  recipients=None, body=None, message=None, **kwargs):
+        """Create notifications for multiple users.
+
+        Accepts ``users``/``recipients`` and ``body``/``message`` aliases so both
+        the GraphQL mutations and internal fan-out callers work unchanged.
+        """
+        users = users if users is not None else recipients
+        if body is None:
+            body = message or ""
         notifications = []
         for user in users:
             notifications.append(cls(

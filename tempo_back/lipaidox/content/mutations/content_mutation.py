@@ -20,6 +20,20 @@ from lipaidox.auth.permissions import require_creator, require_creator_or_admin
 logger = logging.getLogger(__name__)
 
 
+def _announce_if_published(content) -> None:
+    """Fan out a NEW_CONTENT_POSTED notification the first time content is published.
+
+    Idempotent and best-effort: the service guards on ``followers_notified`` and
+    swallows its own errors, so this can be called from every publish path
+    without risk of double-blasting or breaking the mutation.
+    """
+    try:
+        from lipaidox.notifications.services.content_notifications import notify_new_content_posted
+        notify_new_content_posted(content)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("new-content fan-out skipped: %s", exc)
+
+
 def _schedule_main_video_processing(media_obj_id: int, user_id: int) -> None:
     """Enqueue Celery pipeline for main video; fall back to sync if broker is unavailable."""
     try:
@@ -156,6 +170,7 @@ class ContentMutation:
             
             ContentAccessRule.objects.create(**rule_data)
 
+        _announce_if_published(content)
         return ContentType.from_model(content)
 
     @strawberry.mutation
@@ -209,6 +224,7 @@ class ContentMutation:
                 if input.accessRule.expiresAt is not None: rule.expires_at = input.accessRule.expiresAt
                 rule.save()
 
+        _announce_if_published(content)
         return ContentType.from_model(content)
 
     @strawberry.mutation
@@ -224,6 +240,7 @@ class ContentMutation:
             from django.utils import timezone
             content.published_at = timezone.now()
         content.save()
+        _announce_if_published(content)
         return ContentType.from_model(content)
 
     @strawberry.mutation
@@ -486,6 +503,7 @@ class ContentMutation:
         if not content.published_at:
             content.published_at = timezone.now()
         content.save(update_fields=["status", "scheduled_at", "published_at"])
+        _announce_if_published(content)
         return ContentType.from_model(content)
 
     @strawberry.mutation

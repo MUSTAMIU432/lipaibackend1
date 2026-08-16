@@ -44,6 +44,40 @@ def require_admin(user):
 
 @strawberry.type
 class NotificationMutation:
+    # Push token registration — the mobile app calls registerPushToken after
+    # sign-in (and on token refresh) so device pushes can reach it.
+    @strawberry.mutation
+    def register_push_token(
+        self,
+        info: strawberry.types.Info,
+        token: str,
+        platform: str = "expo",
+        deviceId: Optional[str] = None,
+    ) -> bool:
+        """Upsert the caller's push token. Idempotent by token string."""
+        user = require_auth(info)
+        from ..models.push_tokens import PushToken
+        token = (token or "").strip()
+        if not token:
+            return False
+        defaults = {
+            "user": user,
+            "tenant": getattr(user, "tenant", None),
+            "platform": platform or "expo",
+            "is_active": True,
+            "last_used_at": timezone.now(),
+        }
+        obj, created = PushToken.objects.update_or_create(token=token, defaults=defaults)
+        return True
+
+    @strawberry.mutation
+    def unregister_push_token(self, info: strawberry.types.Info, token: str) -> bool:
+        """Deactivate a push token (e.g. on sign-out)."""
+        user = require_auth(info)
+        from ..models.push_tokens import PushToken
+        PushToken.objects.filter(user=user, token=(token or "").strip()).update(is_active=False)
+        return True
+
     # Notification Mutations
     @strawberry.mutation
     def create_notification(self, info: strawberry.types.Info, input: NotificationCreateInput) -> NotificationGraphQLType:

@@ -60,6 +60,11 @@ class Content(TenantAwareModel):
     scheduled_at = models.DateTimeField(null=True, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
 
+    # Set True after followers/subscribers have been notified of this post, so an
+    # edit or re-publish never re-blasts the audience. See
+    # lipaidox.notifications.services.content_notifications.
+    followers_notified = models.BooleanField(default=False)
+
     # Engagement Counters (Stored collectively for scale)
     view_count = models.IntegerField(default=0)
     like_count = models.IntegerField(default=0)
