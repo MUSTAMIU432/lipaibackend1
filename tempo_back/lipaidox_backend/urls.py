@@ -24,16 +24,19 @@ urlpatterns = [
     path("", include("lipaidox.lost_found.urls")),
 ]
 
-if settings.DEBUG:
-    # Range-aware media serving so mobile <video> gets 206 Partial Content.
-    from django.urls import re_path
-    from lipaidox_backend.media_serve import ranged_media_serve
+# Range-aware media serving so mobile <video> gets 206 Partial Content, and so
+# uploaded images/photos actually load on the feed. Registered in PRODUCTION too
+# (not just DEBUG): the app serves its own user uploads from MEDIA_ROOT, and with
+# DEBUG=False on Render the old debug-only guard left every /media/ URL 404ing —
+# which is exactly why a freshly-published photo rendered blank.
+from django.urls import re_path
+from lipaidox_backend.media_serve import ranged_media_serve
 
-    _media_prefix = settings.MEDIA_URL.lstrip("/")
-    urlpatterns += [
-        re_path(
-            rf"^{_media_prefix}(?P<path>.*)$",
-            ranged_media_serve,
-            {"document_root": settings.MEDIA_ROOT},
-        ),
-    ]
+_media_prefix = settings.MEDIA_URL.lstrip("/")
+urlpatterns += [
+    re_path(
+        rf"^{_media_prefix}(?P<path>.*)$",
+        ranged_media_serve,
+        {"document_root": settings.MEDIA_ROOT},
+    ),
+]
