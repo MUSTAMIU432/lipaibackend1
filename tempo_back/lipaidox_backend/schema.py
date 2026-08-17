@@ -32,6 +32,10 @@ from lipaidox.content.queries.content_review_query import ContentReviewQuery
 from lipaidox.content.mutations.content_review_mutation import ContentReviewMutation
 from lipaidox.content.queries.content_comment_query import ContentCommentQuery
 from lipaidox.content.mutations.content_comment_mutation import ContentCommentMutation
+from lipaidox.content.mutations.content_interaction_mutation import (
+    ContentInteractionMutation,
+    ContentInteractionQuery,
+)
 from lipaidox.subscriptions.queries.subscription_query import SubscriptionQuery
 from lipaidox.subscriptions.mutations.subscription_mutation import SubscriptionMutation
 from lipaidox.creator_plans.queries.plan_query import CreatorPlanQuery
@@ -128,6 +132,7 @@ class Query(
     ContentReportQuery,
     ContentReviewQuery,
     ContentCommentQuery,
+    ContentInteractionQuery,
     SubscriptionQuery,
     CreatorPlanQuery,
     AdminPanelQuery,
@@ -180,6 +185,7 @@ class Mutation(
     ContentReportMutation,
     ContentReviewMutation,
     ContentCommentMutation,
+    ContentInteractionMutation,
     SubscriptionMutation,
     CreatorPlanMutation,
     AdminPanelMutation,

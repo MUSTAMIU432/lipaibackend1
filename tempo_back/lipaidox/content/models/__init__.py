@@ -9,10 +9,14 @@ from .content_license import ContentLicense, LicenseStatus
 from .content_appeal import ContentAppeal, AppealStatus
 from .content_review import ContentReview, ContentReviewHelpful, ContentReviewStatus
 from .content_comment import ContentComment, ContentCommentStatus
+from .content_like import ContentLike
+from .content_bookmark import ContentBookmark
 
 __all__ = [
     "ContentComment",
     "ContentCommentStatus",
+    "ContentLike",
+    "ContentBookmark",
     "ContentReview",
     "ContentReviewHelpful",
     "ContentReviewStatus",

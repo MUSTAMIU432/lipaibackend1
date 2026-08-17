@@ -304,6 +304,26 @@ class ContentType:
         return _vha(getattr(info.context.request, "user", None), content)
 
     @strawberry.field
+    def is_liked_by_viewer(self, info: strawberry.types.Info) -> bool:
+        """Whether the current viewer has liked this content."""
+        content = self._content_row()
+        user = getattr(info.context.request, "user", None)
+        if content is None or not getattr(user, "is_authenticated", False):
+            return False
+        from ..models import ContentLike
+        return ContentLike.objects.filter(user=user, content=content).exists()
+
+    @strawberry.field
+    def is_saved_by_viewer(self, info: strawberry.types.Info) -> bool:
+        """Whether the current viewer has saved/bookmarked this content."""
+        content = self._content_row()
+        user = getattr(info.context.request, "user", None)
+        if content is None or not getattr(user, "is_authenticated", False):
+            return False
+        from ..models import ContentBookmark
+        return ContentBookmark.objects.filter(user=user, content=content).exists()
+
+    @strawberry.field
     def is_purchased(self, info: strawberry.types.Info) -> bool:
         """Whether the current viewer has an active PPV purchase for this content."""
         from ..access import viewer_purchase
