@@ -27,9 +27,22 @@ class CreatorProfileType:
     subscriberCount: int
     totalEarnings: float
     createdAt: datetime
+    # Public subscription price so a viewer's profile can show what it costs to
+    # subscribe (and unlock the creator's exclusive content). Null = the creator
+    # hasn't priced/enabled subscriptions.
+    subscriptionPrice: Optional[float] = None
+    subscriptionEnabled: bool = False
 
     @classmethod
     def from_model(cls, instance: CreatorProfile):
+        sub_price = None
+        sub_enabled = False
+        settings = getattr(instance, "monetization_settings", None)
+        if settings is not None:
+            sub_enabled = bool(getattr(settings, "subscription_enabled", False))
+            raw = getattr(settings, "subscription_price", None)
+            if raw is not None:
+                sub_price = float(raw)
         return cls(
             id=strawberry.ID(str(instance.id)),
             userId=strawberry.ID(str(instance.user_id)),
@@ -53,6 +66,8 @@ class CreatorProfileType:
             subscriberCount=instance.subscriber_count,
             totalEarnings=float(instance.total_earnings),
             createdAt=instance.created_at,
+            subscriptionPrice=sub_price,
+            subscriptionEnabled=sub_enabled,
         )
 
 @strawberry.input
