@@ -23,12 +23,26 @@ ALLOWED_CONTENT_ARCHIVE_TYPES = {
     "application/x-rar-compressed",
     "application/vnd.rar",
 }
+# Voice notes (DM + live). expo-audio records AAC-in-MP4 (.m4a); the various
+# platforms/label it differently, so accept the common audio content types.
+ALLOWED_CONTENT_AUDIO_TYPES = {
+    "audio/m4a",
+    "audio/x-m4a",
+    "audio/mp4",
+    "audio/aac",
+    "audio/mpeg",
+    "audio/webm",
+    "audio/ogg",
+    "audio/wav",
+    "audio/x-wav",
+}
 
 # Per-type upload limits for creator content (REST body; tune via reverse proxy too).
 _MAX_CONTENT_IMAGE = 30 * 1024 * 1024
 _MAX_CONTENT_VIDEO = 500 * 1024 * 1024
 _MAX_CONTENT_PDF = 80 * 1024 * 1024
 _MAX_CONTENT_ARCHIVE = 500 * 1024 * 1024
+_MAX_CONTENT_AUDIO = 30 * 1024 * 1024
 
 
 def _get_user(request):
@@ -96,6 +110,8 @@ def _content_upload_max_bytes(content_type: str) -> int:
         return _MAX_CONTENT_VIDEO
     if content_type.startswith("image/"):
         return _MAX_CONTENT_IMAGE
+    if content_type.startswith("audio/"):
+        return _MAX_CONTENT_AUDIO
     if content_type in ALLOWED_CONTENT_PDF_TYPES:
         return _MAX_CONTENT_PDF
     if content_type in ALLOWED_CONTENT_ARCHIVE_TYPES:
@@ -107,6 +123,8 @@ def _content_upload_allowed_type(content_type: str) -> bool:
     if content_type in ALLOWED_CONTENT_IMAGE_TYPES:
         return True
     if content_type in ALLOWED_CONTENT_VIDEO_TYPES:
+        return True
+    if content_type in ALLOWED_CONTENT_AUDIO_TYPES:
         return True
     if content_type in ALLOWED_CONTENT_PDF_TYPES:
         return True
@@ -128,8 +146,10 @@ def upload_content_media(request):
     if not user:
         return JsonResponse({"error": "Authentication required"}, status=401)
 
-    if getattr(user, "role", None) != "creator":
-        return JsonResponse({"error": "Creator access required"}, status=403)
+    # No creator gate: any authenticated user uploads media here, because DM
+    # attachments — photos and voice notes — are sent by fans too, not only
+    # creators publishing content. Uploads stay type- and size-limited and are
+    # namespaced under the uploader's id below.
 
     file = request.FILES.get("file")
     if not file:
@@ -158,6 +178,8 @@ def upload_content_media(request):
             ext = ".mp4"
         elif ct.startswith("image/"):
             ext = ".jpg"
+        elif ct.startswith("audio/"):
+            ext = ".m4a"
         elif ct in ALLOWED_CONTENT_PDF_TYPES:
             ext = ".pdf"
         elif ct in ALLOWED_CONTENT_ARCHIVE_TYPES:
