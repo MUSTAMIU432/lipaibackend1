@@ -265,9 +265,14 @@ class ContentType:
 
     @strawberry.field
     def comment_count(self) -> int:
+        # Top-level comments only — replies are not counted, matching the count
+        # the comments list (content_comments) reports and shows in its header.
         from ..models import ContentComment, ContentCommentStatus
         return ContentComment.objects.filter(
-            content_id=str(self.id), status=ContentCommentStatus.PUBLISHED, deleted_at__isnull=True
+            content_id=str(self.id),
+            status=ContentCommentStatus.PUBLISHED,
+            deleted_at__isnull=True,
+            parent__isnull=True,
         ).count()
 
     def _content_row(self) -> Optional[Content]:
