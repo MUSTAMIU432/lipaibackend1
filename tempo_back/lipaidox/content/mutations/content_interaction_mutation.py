@@ -3,7 +3,7 @@ import strawberry
 from typing import List, Optional
 from django.db.models import F
 
-from ..models import Content, ContentLike, ContentBookmark
+from ..models import Content, ContentLike, ContentBookmark, ContentView
 from ..schema.content_schema import ContentType
 
 
@@ -44,7 +44,27 @@ def _result(content, liked: bool, saved: bool) -> "ContentInteractionResult":
 
 
 @strawberry.type
+class RecordViewResult:
+    contentId: strawberry.ID
+    viewCount: int
+
+
+@strawberry.type
 class ContentInteractionMutation:
+    @strawberry.mutation
+    def record_content_view(self, info: strawberry.types.Info, content_id: strawberry.ID) -> RecordViewResult:
+        """Count a distinct view. First time a user opens this content, bump
+        Content.view_count; re-opens by the same user don't inflate it."""
+        user = _require_user(info)
+        content = _get_content(user, content_id)
+        _, created = ContentView.objects.get_or_create(
+            user=user, content=content, defaults={"tenant": getattr(user, "tenant", None)}
+        )
+        if created:
+            Content.objects.filter(id=content.id).update(view_count=F("view_count") + 1)
+        content.refresh_from_db(fields=["view_count"])
+        return RecordViewResult(contentId=strawberry.ID(str(content.id)), viewCount=content.view_count)
+
     @strawberry.mutation
     def like_content(self, info: strawberry.types.Info, content_id: strawberry.ID) -> ContentInteractionResult:
         user = _require_user(info)

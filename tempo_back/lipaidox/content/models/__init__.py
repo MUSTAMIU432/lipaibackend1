@@ -11,12 +11,14 @@ from .content_review import ContentReview, ContentReviewHelpful, ContentReviewSt
 from .content_comment import ContentComment, ContentCommentStatus
 from .content_like import ContentLike
 from .content_bookmark import ContentBookmark
+from .content_view import ContentView
 
 __all__ = [
     "ContentComment",
     "ContentCommentStatus",
     "ContentLike",
     "ContentBookmark",
+    "ContentView",
     "ContentReview",
     "ContentReviewHelpful",
     "ContentReviewStatus",
