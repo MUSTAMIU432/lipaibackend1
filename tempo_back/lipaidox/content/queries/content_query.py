@@ -70,7 +70,19 @@ class ContentQuery:
             return None
 
     @strawberry.field
-    def all_public_content(self, info: strawberry.types.Info, category: Optional[str] = None) -> List[ContentType]:
+    def all_public_content(
+        self,
+        info: strawberry.types.Info,
+        category: Optional[str] = None,
+        offset: int = 0,
+        limit: Optional[int] = None,
+    ) -> List[ContentType]:
+        """Published content, newest first, with optional keyset pagination.
+
+        `offset`/`limit` back the feed's progressive loading (a page at a time).
+        A recommendation engine can later replace this ordering/selection without
+        the client changing — it already asks for a window, not the whole feed.
+        """
         tenant = get_current_tenant()
         queryset = (
             Content.objects.filter(tenant=tenant, status='published')
@@ -80,6 +92,10 @@ class ContentQuery:
         )
         if category:
             queryset = queryset.filter(categories__contains=[category])
+        if limit is not None:
+            queryset = queryset[offset:offset + limit]
+        elif offset:
+            queryset = queryset[offset:]
         return [ContentType.from_model(c) for c in queryset]
 
     @strawberry.field
