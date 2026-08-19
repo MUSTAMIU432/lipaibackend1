@@ -26,6 +26,21 @@ def _get_conversation(user, conversation_id):
     return conv
 
 
+def _get_reactable_message(user, message_id):
+    """A message the user may react to — i.e. one in a conversation they belong
+    to. Without this membership check any authenticated user could react to any
+    message by id."""
+    msg = (
+        Message.objects.filter(id=message_id)
+        .filter(Q(conversation__fan=user) | Q(conversation__creator=user))
+        .select_related("conversation")
+        .first()
+    )
+    if msg is None:
+        raise Exception("Message not found")
+    return msg
+
+
 def _compute_expiry(conv, disappear_after):
     mode = disappear_after or conv.disappearing_enabled or "off"
     if mode == "off":
@@ -239,9 +254,7 @@ class DmMutations:
         self, info, message_id: strawberry.ID, emoji: str
     ) -> DmMessageType:
         user = require_auth(info)
-        msg = Message.objects.filter(id=message_id).first()
-        if msg is None:
-            raise Exception("Message not found")
+        msg = _get_reactable_message(user, message_id)
         MessageReaction.objects.get_or_create(
             message=msg, user=user, emoji=emoji,
             defaults={"tenant": getattr(user, "tenant", None)},
@@ -253,9 +266,7 @@ class DmMutations:
         self, info, message_id: strawberry.ID, emoji: str
     ) -> DmMessageType:
         user = require_auth(info)
-        msg = Message.objects.filter(id=message_id).first()
-        if msg is None:
-            raise Exception("Message not found")
+        msg = _get_reactable_message(user, message_id)
         MessageReaction.objects.filter(message=msg, user=user, emoji=emoji).delete()
         return DmMessageType.from_model(msg)
 
