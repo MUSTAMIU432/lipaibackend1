@@ -19,6 +19,7 @@ class CreatorProfileType:
     timezone: Optional[str]
     gender: Optional[str]
     areaOfInterest: Optional[str]
+    contentCategories: List[str]
     socialInstagram: Optional[str]
     status: str
     isVerified: bool
@@ -58,6 +59,7 @@ class CreatorProfileType:
             timezone=instance.timezone,
             gender=instance.gender,
             areaOfInterest=instance.area_of_interest,
+            contentCategories=list(instance.content_categories or []),
             socialInstagram=instance.social_instagram,
             status=instance.status,
             isVerified=instance.is_verified,
@@ -87,6 +89,7 @@ class UpdateProfileInput:
     nationality: Optional[str] = None
     gender: Optional[str] = None
     areaOfInterest: Optional[str] = None
+    contentCategories: Optional[List[str]] = None
     preferredLanguage: Optional[str] = None
     timezone: Optional[str] = None
     socialInstagram: Optional[str] = None

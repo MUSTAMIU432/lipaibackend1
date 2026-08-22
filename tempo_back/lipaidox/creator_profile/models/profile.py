@@ -40,6 +40,12 @@ class CreatorProfile(TenantAwareModel):
     # Area(s) of interest — multiple values stored as "|||"-joined labels (see FRT encodeAreasOfInterest).
     area_of_interest = models.TextField(null=True, blank=True)
 
+    # Content categories the creator publishes in, as stable lowercase keys
+    # ("travel", "music") from the shared CONTENT_CATEGORIES list. Kept separate
+    # from area_of_interest: that field is what the creator is INTERESTED in,
+    # this is what they MAKE, and the two use different vocabularies.
+    content_categories = models.JSONField(default=list, blank=True)
+
     # Social Media
     social_instagram = models.URLField(max_length=255, null=True, blank=True)
     social_twitter = models.URLField(max_length=255, null=True, blank=True)

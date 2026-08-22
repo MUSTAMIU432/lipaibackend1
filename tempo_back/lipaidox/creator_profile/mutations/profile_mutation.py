@@ -102,6 +102,15 @@ class ProfileMutation:
                 profile.gender = input.gender
             if input.areaOfInterest is not None:
                 profile.area_of_interest = input.areaOfInterest
+            if input.contentCategories is not None:
+                # Store de-duplicated, order-preserving lowercase keys.
+                seen, cleaned = set(), []
+                for raw in input.contentCategories:
+                    key = (raw or "").strip().lower()
+                    if key and key not in seen:
+                        seen.add(key)
+                        cleaned.append(key)
+                profile.content_categories = cleaned
             if input.preferredLanguage is not None:
                 profile.preferred_language = input.preferredLanguage
             if input.timezone is not None:
