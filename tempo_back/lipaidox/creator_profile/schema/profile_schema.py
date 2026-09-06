@@ -25,7 +25,9 @@ class CreatorProfileType:
     isVerified: bool
     creatorTier: str
     followerCount: int
+    followingCount: int
     subscriberCount: int
+    contentCount: int
     totalEarnings: float
     createdAt: datetime
     # Public subscription price so a viewer's profile can show what it costs to
@@ -36,6 +38,11 @@ class CreatorProfileType:
 
     @classmethod
     def from_model(cls, instance: CreatorProfile):
+        # Local imports: `Content` lives in the `content` app, which itself
+        # references `creator_profile` via a string FK — a top-level import
+        # here would risk a circular import between the two apps.
+        from lipaidox.content.models.content import Content, ContentStatus
+
         sub_price = None
         sub_enabled = False
         settings = getattr(instance, "monetization_settings", None)
@@ -65,7 +72,11 @@ class CreatorProfileType:
             isVerified=instance.is_verified,
             creatorTier=instance.creator_tier,
             followerCount=instance.follower_count,
+            followingCount=instance.user.following_set.count(),
             subscriberCount=instance.subscriber_count,
+            contentCount=Content.objects.filter(
+                creator=instance, status=ContentStatus.PUBLISHED
+            ).count(),
             totalEarnings=float(instance.total_earnings),
             createdAt=instance.created_at,
             subscriptionPrice=sub_price,
