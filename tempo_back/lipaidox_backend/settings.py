@@ -390,6 +390,11 @@ WHATSAPP_ACCESS_TOKEN = config("WHATSAPP_ACCESS_TOKEN", default="")
 WHATSAPP_WEBHOOK_TOKEN = config("WHATSAPP_WEBHOOK_TOKEN", default="")
 
 # -----------------------------
+# Google Cloud Translate (DM "Translate" action) — chat/messaging/schema/translate.py
+# -----------------------------
+GOOGLE_TRANSLATE_API_KEY = config("GOOGLE_TRANSLATE_API_KEY", default="")
+
+# -----------------------------
 # Email (SMTP) — read from `.env` next to `manage.py` (python-decouple `config()`).
 # -----------------------------
 # Password-reset **OTP** (`requestPasswordReset` → `send_password_reset_otp_email`) uses

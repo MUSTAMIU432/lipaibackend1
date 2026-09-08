@@ -12,6 +12,7 @@ class MessageType(models.TextChoices):
     FILE = 'file', 'File'
     TIP = 'tip', 'Tip'
     AUTOMATED = 'automated', 'Automated'
+    STICKER = 'sticker', 'Sticker'
 
 
 class MessageStatus(models.TextChoices):
@@ -70,6 +71,10 @@ class Message(TenantAwareModel):
     links = models.JSONField(default=list, blank=True)         # list[{url,title,description,image,domain}]
     voice_note = models.JSONField(null=True, blank=True)       # {url, duration, waveform}
     video_note = models.JSONField(null=True, blank=True)       # {url, duration, thumbnail}
+    # An oversized-emoji "sticker" (e.g. "🎉") rather than an image asset — there's
+    # no sticker-pack catalog/CDN in this backend, so the sticker *is* the emoji,
+    # rendered large by the client instead of inline with the message text.
+    sticker = models.CharField(max_length=16, null=True, blank=True)
 
     # Editing
     is_edited = models.BooleanField(default=False)

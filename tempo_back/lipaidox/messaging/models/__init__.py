@@ -14,6 +14,7 @@ from .quick_reply import QuickReply
 from .scheduled_message import ScheduledMessage
 from .broadcast import BroadcastMessage, BroadcastTarget
 from .reaction import MessageReaction
+from .starred_message import StarredMessage
 from .report import ConversationReport
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     'BroadcastMessage',
     'BroadcastTarget',
     'MessageReaction',
+    'StarredMessage',
     'ConversationReport',
 ]

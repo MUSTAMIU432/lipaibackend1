@@ -79,6 +79,13 @@ class DmMediaItemType:
     messageId: strawberry.ID
 
 
+@strawberry.type
+class DmTranslationType:
+    translatedText: str
+    sourceLanguage: str
+    targetLanguage: str
+
+
 # ─── Message ──────────────────────────────────────────────────────────────────
 
 @strawberry.type
@@ -99,10 +106,12 @@ class DmMessageType:
     expiresAt: Optional[datetime]
     voiceNote: Optional[DmVoiceNoteType]
     videoNote: Optional[DmVideoNoteType]
+    sticker: Optional[str]
+    isStarred: bool
     status: str
 
     @classmethod
-    def from_model(cls, m: Message) -> "DmMessageType":
+    def from_model(cls, m: Message, viewer_id: Optional[str] = None) -> "DmMessageType":
         # aggregate reactions by emoji
         agg: dict = {}
         for r in m.reactions.all():
@@ -149,6 +158,8 @@ class DmMessageType:
                 thumbnail=m.video_note.get("thumbnail"),
             )
 
+        is_starred = bool(viewer_id) and m.stars.filter(user_id=viewer_id).exists()
+
         return cls(
             id=strawberry.ID(str(m.id)),
             conversationId=strawberry.ID(str(m.conversation_id)),
@@ -166,6 +177,8 @@ class DmMessageType:
             expiresAt=m.expires_at,
             voiceNote=voice,
             videoNote=video,
+            sticker=m.sticker,
+            isStarred=is_starred,
             status=m.status,
         )
 
@@ -200,7 +213,7 @@ class DmConversationType:
         return cls(
             id=strawberry.ID(str(c.id)),
             otherUser=DmUserType.from_model(other_party(c, user)),
-            lastMessage=DmMessageType.from_model(last) if last else None,
+            lastMessage=DmMessageType.from_model(last, viewer_id=str(user.id)) if last else None,
             lastMessageTime=c.last_message_at,
             unreadCount=(c.fan_unread_count if side == 'fan' else c.creator_unread_count),
             isPinned=(c.pinned_by_fan if side == 'fan' else c.pinned_by_creator),
@@ -277,4 +290,5 @@ class SendDmInput:
     images: Optional[List[str]] = None
     replyToMessageId: Optional[strawberry.ID] = None
     voiceNote: Optional[VoiceNoteInput] = None
+    sticker: Optional[str] = None
     disappearAfter: Optional[str] = None

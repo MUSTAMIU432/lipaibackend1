@@ -104,8 +104,29 @@ class DmQueries:
             qs = qs.filter(sent_at__lt=before)
         if after:
             qs = qs.filter(sent_at__gt=after)
-        qs = qs.select_related("reply_to_message", "sender").prefetch_related("reactions").order_by("-sent_at")[:limit]
-        return [DmMessageType.from_model(m) for m in reversed(list(qs))]
+        qs = qs.select_related("reply_to_message", "sender").prefetch_related("reactions", "stars").order_by("-sent_at")[:limit]
+        return [DmMessageType.from_model(m, viewer_id=str(user.id)) for m in reversed(list(qs))]
+
+    @strawberry.field
+    def dm_starred_messages(self, info) -> List[DmMessageType]:
+        """Every message this user has starred, across all their conversations."""
+        user = get_user(info)
+        if user is None:
+            return []
+        qs = (
+            Message.objects.filter(stars__user=user)
+            .exclude(status="deleted")
+            .select_related("reply_to_message", "sender")
+            .prefetch_related("reactions", "stars")
+            .order_by("-sent_at")
+        )
+        return [DmMessageType.from_model(m, viewer_id=str(user.id)) for m in qs]
+
+    @strawberry.field
+    def dm_sticker_catalog(self) -> List[str]:
+        """The fixed set of oversized-emoji 'stickers' — see `Message.sticker`."""
+        from ..schema.stickers import STICKER_CATALOG
+        return STICKER_CATALOG
 
     @strawberry.field
     def dm_quick_replies(self, info) -> List[DmQuickReplyType]:

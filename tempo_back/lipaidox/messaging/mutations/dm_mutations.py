@@ -6,13 +6,14 @@ from django.utils import timezone
 
 from ..models import (
     Conversation, ConversationType, Message, MessageType,
-    QuickReply, ScheduledMessage, MessageReaction, ConversationReport,
+    QuickReply, ScheduledMessage, MessageReaction, StarredMessage, ConversationReport,
 )
 from ..schema.types import (
     DmConversationType, DmMessageType, DmQuickReplyType, DmScheduledMessageType,
-    SendDmInput,
+    DmTranslationType, SendDmInput,
 )
 from ..schema.helpers import require_auth, side_of, other_party, creator_profile_of
+from ..schema.translate import translate_text
 
 _DISAPPEAR_SECONDS = {"1h": 3600, "24h": 86400, "7d": 604800, "30d": 2592000}
 
@@ -27,9 +28,9 @@ def _get_conversation(user, conversation_id):
 
 
 def _get_reactable_message(user, message_id):
-    """A message the user may react to — i.e. one in a conversation they belong
-    to. Without this membership check any authenticated user could react to any
-    message by id."""
+    """A message the user may act on (react to, star, translate) — i.e. one in a
+    conversation they belong to. Without this membership check any authenticated
+    user could act on any message by id."""
     msg = (
         Message.objects.filter(id=message_id)
         .filter(Q(conversation__fan=user) | Q(conversation__creator=user))
@@ -218,15 +219,22 @@ class DmMutations:
                 "duration": input.voiceNote.duration,
                 "waveform": input.voiceNote.waveform or [],
             }
+        sticker = None
+        if input.sticker:
+            from ..schema.stickers import STICKER_CATALOG
+            if input.sticker not in STICKER_CATALOG:
+                raise Exception("Unknown sticker")
+            sticker = input.sticker
         msg = _create_message(
             conv, user,
             body=input.text or "",
             images=input.images or [],
             voice_note=voice,
+            sticker=sticker,
             reply_to_id=input.replyToMessageId,
             disappear_after=input.disappearAfter,
         )
-        return DmMessageType.from_model(msg)
+        return DmMessageType.from_model(msg, viewer_id=str(user.id))
 
     @strawberry.mutation
     def edit_dm_message(self, info, message_id: strawberry.ID, text: str) -> DmMessageType:
@@ -238,7 +246,7 @@ class DmMutations:
         msg.is_edited = True
         msg.edited_at = timezone.now()
         msg.save(update_fields=["body", "is_edited", "edited_at", "updated_at"])
-        return DmMessageType.from_model(msg)
+        return DmMessageType.from_model(msg, viewer_id=str(user.id))
 
     @strawberry.mutation
     def delete_dm_message(self, info, message_id: strawberry.ID) -> bool:
@@ -259,7 +267,7 @@ class DmMutations:
             message=msg, user=user, emoji=emoji,
             defaults={"tenant": getattr(user, "tenant", None)},
         )
-        return DmMessageType.from_model(msg)
+        return DmMessageType.from_model(msg, viewer_id=str(user.id))
 
     @strawberry.mutation
     def remove_dm_reaction(
@@ -268,7 +276,34 @@ class DmMutations:
         user = require_auth(info)
         msg = _get_reactable_message(user, message_id)
         MessageReaction.objects.filter(message=msg, user=user, emoji=emoji).delete()
-        return DmMessageType.from_model(msg)
+        return DmMessageType.from_model(msg, viewer_id=str(user.id))
+
+    @strawberry.mutation
+    def star_dm_message(self, info, message_id: strawberry.ID) -> DmMessageType:
+        user = require_auth(info)
+        msg = _get_reactable_message(user, message_id)
+        StarredMessage.objects.get_or_create(
+            message=msg, user=user,
+            defaults={"tenant": getattr(user, "tenant", None)},
+        )
+        return DmMessageType.from_model(msg, viewer_id=str(user.id))
+
+    @strawberry.mutation
+    def unstar_dm_message(self, info, message_id: strawberry.ID) -> DmMessageType:
+        user = require_auth(info)
+        msg = _get_reactable_message(user, message_id)
+        StarredMessage.objects.filter(message=msg, user=user).delete()
+        return DmMessageType.from_model(msg, viewer_id=str(user.id))
+
+    @strawberry.mutation
+    def translate_dm_message(
+        self, info, message_id: strawberry.ID, target_language: str
+    ) -> DmTranslationType:
+        user = require_auth(info)
+        msg = _get_reactable_message(user, message_id)
+        if not (msg.body or "").strip():
+            raise Exception("Nothing to translate")
+        return translate_text(msg.body, target_language)
 
     # ── Quick replies ─────────────────────────────────────────────────────────
 
@@ -334,9 +369,11 @@ class DmMutations:
 
 
 def _create_message(conv, sender, body="", images=None, voice_note=None,
-                    reply_to_id=None, disappear_after=None):
+                    sticker=None, reply_to_id=None, disappear_after=None):
     """Create a message, set type/expiry, and update conversation snapshot/unread."""
-    if voice_note:
+    if sticker:
+        mtype = MessageType.STICKER
+    elif voice_note:
         mtype = MessageType.AUDIO
     elif images:
         mtype = MessageType.IMAGE
@@ -352,6 +389,7 @@ def _create_message(conv, sender, body="", images=None, voice_note=None,
         message_type=mtype,
         images=images or [],
         voice_note=voice_note,
+        sticker=sticker,
         reply_to_message_id=reply_to_id,
         disappear_after=mode,
         expires_at=expires_at,
