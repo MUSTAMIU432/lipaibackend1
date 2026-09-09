@@ -51,6 +51,12 @@ class Content(TenantAwareModel):
     allow_download = models.BooleanField(default=False)
     platform_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, default=15.00)
 
+    # Where the creator says this content is set/relevant — "City, Country", e.g. "Zanzibar, Tanzania".
+    location = models.CharField(max_length=255, null=True, blank=True)
+    # Instagram-style "hide like and view counts": numbers stay visible to the
+    # owner, but are withheld from everyone else viewing this post.
+    hide_engagement_counts = models.BooleanField(default=False)
+
     # Series
     is_continuous = models.BooleanField(default=False)
     series = models.ForeignKey(ContentSeries, on_delete=models.SET_NULL, null=True, blank=True, related_name="episodes")

@@ -224,10 +224,14 @@ class ContentType:
     timedDurationUnit: Optional[str]
     categories: List[str]
     allowDownload: bool
+    location: Optional[str]
+    hideEngagementCounts: bool
     isContinuous: bool
     episodeNumber: Optional[int]
-    viewCount: int
-    likeCount: int
+    # Raw stored counters — not exposed directly; `viewCount`/`likeCount` below
+    # gate them behind `hideEngagementCounts` for non-owner viewers.
+    rawViewCount: strawberry.Private[int]
+    rawLikeCount: strawberry.Private[int]
     publishedAt: Optional[datetime]
     scheduledAt: Optional[datetime]
     attachments: List[ContentAttachmentType]
@@ -246,6 +250,25 @@ class ContentType:
         except Content.DoesNotExist:
             return None
         return CreatorProfileType.from_model(row.creator)
+
+    def _viewer_is_owner(self, info: strawberry.types.Info) -> bool:
+        content = self._content_row()
+        user = getattr(info.context.request, "user", None)
+        return bool(content and getattr(user, "is_authenticated", False) and content.creator.user_id == user.id)
+
+    @strawberry.field
+    def view_count(self, info: strawberry.types.Info) -> int:
+        """Withheld (0) from non-owners when the creator hid engagement counts —
+        the owner always sees the real number."""
+        if not self.hideEngagementCounts or self._viewer_is_owner(info):
+            return self.rawViewCount
+        return 0
+
+    @strawberry.field
+    def like_count(self, info: strawberry.types.Info) -> int:
+        if not self.hideEngagementCounts or self._viewer_is_owner(info):
+            return self.rawLikeCount
+        return 0
 
     @strawberry.field
     def average_rating(self) -> float:
@@ -364,10 +387,12 @@ class ContentType:
             timedDurationUnit=instance.timed_duration_unit,
             categories=instance.categories,
             allowDownload=instance.allow_download,
+            location=instance.location,
+            hideEngagementCounts=instance.hide_engagement_counts,
             isContinuous=instance.is_continuous,
             episodeNumber=instance.episode_number,
-            viewCount=instance.view_count,
-            likeCount=instance.like_count,
+            rawViewCount=instance.view_count,
+            rawLikeCount=instance.like_count,
             publishedAt=instance.published_at,
             scheduledAt=instance.scheduled_at,
             attachments=[ContentAttachmentType.from_model(a) for a in instance.attachments.all()],
@@ -463,7 +488,9 @@ class UpdateContentInput:
     timedDurationValue: Optional[int] = None
     timedDurationUnit: Optional[str] = None
     allowDownload: Optional[bool] = None
-    
+    location: Optional[str] = None
+    hideEngagementCounts: Optional[bool] = None
+
     # Series
     isContinuous: Optional[bool] = None
     seriesId: Optional[strawberry.ID] = None
@@ -493,7 +520,9 @@ class CreateContentInput:
     timedDurationValue: Optional[int] = None
     timedDurationUnit: Optional[str] = None
     allowDownload: bool = False
-    
+    location: Optional[str] = None
+    hideEngagementCounts: bool = False
+
     # Series
     isContinuous: bool = False
     seriesId: Optional[strawberry.ID] = None

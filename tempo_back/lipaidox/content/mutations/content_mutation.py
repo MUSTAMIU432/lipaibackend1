@@ -112,6 +112,8 @@ class ContentMutation:
                 timed_duration_value=input.timedDurationValue,
                 timed_duration_unit=input.timedDurationUnit,
                 allow_download=input.allowDownload,
+                location=input.location,
+                hide_engagement_counts=input.hideEngagementCounts,
                 is_continuous=input.isContinuous,
                 episode_number=input.episodeNumber,
                 series_id=final_series_id,
@@ -199,6 +201,8 @@ class ContentMutation:
             if input.timedDurationValue is not None: content.timed_duration_value = input.timedDurationValue
             if input.timedDurationUnit is not None: content.timed_duration_unit = input.timedDurationUnit
             if input.allowDownload is not None: content.allow_download = input.allowDownload
+            if input.location is not None: content.location = input.location
+            if input.hideEngagementCounts is not None: content.hide_engagement_counts = input.hideEngagementCounts
             if input.isContinuous is not None: content.is_continuous = input.isContinuous
             if input.episodeNumber is not None: content.episode_number = input.episodeNumber
             if input.seriesId is not None: content.series_id = input.seriesId
@@ -558,6 +562,8 @@ class ContentMutation:
                 timed_duration_value=content.timed_duration_value,
                 timed_duration_unit=content.timed_duration_unit,
                 allow_download=content.allow_download,
+                location=content.location,
+                hide_engagement_counts=content.hide_engagement_counts,
                 is_continuous=content.is_continuous,
                 series=content.series,
                 episode_number=content.episode_number,
