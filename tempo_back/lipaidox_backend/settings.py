@@ -316,7 +316,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Media Files (user uploads)
 # -----------------------------
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# Render's own container filesystem is wiped on every redeploy/restart — files
+# written under BASE_DIR (the default below) vanish the moment the service next
+# rebuilds, even though the database row that references them survives. Set
+# MEDIA_ROOT to a Render Disk's mount path (Settings → Disks in the Render
+# dashboard, then add this as an env var on the service, e.g.
+# MEDIA_ROOT=/var/data/media) and uploads persist across deploys instead.
+# Unset — the default below — keeps today's behaviour for local dev.
+MEDIA_ROOT = Path(config("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 
 # Accept larger GraphQL JSON bodies (e.g. upload metadata/data URLs sent by the frontend).
 # Keep this configurable via .env for local/prod tuning.
