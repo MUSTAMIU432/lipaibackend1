@@ -5,7 +5,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from ..models import (
-    Conversation, ConversationType, Message, MessageType,
+    Conversation, ConversationStatus, ConversationType, Message, MessageType,
     QuickReply, ScheduledMessage, MessageReaction, StarredMessage, ConversationReport,
 )
 from ..schema.types import (
@@ -137,6 +137,26 @@ class DmMutations:
         return DmConversationType.from_model(conv, user)
 
     @strawberry.mutation
+    def block_dm_conversation(
+        self, info, conversation_id: strawberry.ID, blocked: bool,
+        reason: Optional[str] = None,
+    ) -> DmConversationType:
+        """Block (or unblock) the other participant.
+
+        Blocking stops sends in both directions. Only the participant who
+        blocked may lift it, so a blocked user can't undo their own block.
+        """
+        user = require_auth(info)
+        conv = _get_conversation(user, conversation_id)
+        if blocked:
+            conv.block_conversation(blocked_by=user, reason=reason)
+        else:
+            if conv.status == ConversationStatus.BLOCKED and conv.blocked_by_id != user.id:
+                raise Exception("Only the person who blocked this chat can unblock it")
+            conv.unblock_conversation()
+        return DmConversationType.from_model(conv, user)
+
+    @strawberry.mutation
     def clear_dm_conversation(
         self, info, conversation_id: strawberry.ID
     ) -> DmConversationType:
@@ -212,6 +232,8 @@ class DmMutations:
     def send_dm_message(self, info, input: SendDmInput) -> DmMessageType:
         user = require_auth(info)
         conv = _get_conversation(user, input.conversationId)
+        if conv.status == ConversationStatus.BLOCKED:
+            raise Exception("You can't send messages in a blocked conversation")
         voice = None
         if input.voiceNote:
             voice = {

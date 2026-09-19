@@ -138,10 +138,7 @@ class CreditsQuery:
         try:
             from lipaidox.creator_profile.models import CreatorProfile
             profile = CreatorProfile.objects.get(user=user)
-            wallet, created = CreatorCreditWallet.objects.get_or_create(
-                creator=profile,
-                defaults={'tenant': user.tenant}
-            )
+            wallet, created = CreatorCreditWallet.objects.get_or_create(creator=profile)
             return CreatorCreditWalletType.from_model(wallet)
         except Exception:
             return None

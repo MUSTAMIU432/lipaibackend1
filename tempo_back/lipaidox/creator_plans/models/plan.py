@@ -26,8 +26,19 @@ class CreatorPlan(models.Model):
     credit_top_up_duration_mins = models.IntegerField(null=True, blank=True)
 
     # ── LIMITS ──
+    # Convention for every cap below: NULL = unlimited, 0 = not allowed.
     max_content_uploads_per_month = models.IntegerField(null=True, blank=True)
     max_file_size_mb = models.IntegerField(null=True, blank=True)
+    max_premium_content_per_month = models.IntegerField(null=True, blank=True)
+    max_live_countries = models.IntegerField(null=True, blank=True)
+    max_subscription_tiers = models.IntegerField(default=0)
+
+    # ── MONEY ──
+    # Share of a premium-content sale the platform keeps (NULL = plan can't sell).
+    platform_fee_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # Discount for paying a year up front; the annual total is
+    # price_per_month * 12 * (1 - discount/100).
+    annual_discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
 
     is_active = models.BooleanField(default=True)
     sort_order = models.IntegerField(default=0)

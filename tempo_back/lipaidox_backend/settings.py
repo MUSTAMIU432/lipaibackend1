@@ -145,6 +145,7 @@ INSTALLED_APPS = [
     "lipaidox.messaging",
     "lipaidox.creator_plans",
     "lipaidox.credits",
+    "lipaidox.feedback",
     "lipaidox.recommendation",
     "lipaidox.lms_identity",
     "lipaidox.lms_content",

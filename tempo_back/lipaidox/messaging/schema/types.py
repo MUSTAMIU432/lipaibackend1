@@ -8,6 +8,14 @@ from .helpers import side_of, other_party, display_name, avatar_url
 
 # ─── Leaf types ───────────────────────────────────────────────────────────────
 
+def _is_verified(user) -> bool:
+    """The verified tick lives on the creator profile; a user without one isn't verified."""
+    try:
+        return bool(user.profile.is_verified)
+    except Exception:
+        return False
+
+
 @strawberry.type
 class DmUserType:
     id: strawberry.ID
@@ -16,6 +24,7 @@ class DmUserType:
     avatar: Optional[str]
     isOnline: bool
     lastSeen: Optional[str]
+    isVerified: bool
 
     @classmethod
     def from_model(cls, user):
@@ -31,6 +40,7 @@ class DmUserType:
             avatar=avatar_url(user),
             isOnline=online,
             lastSeen=last_seen_str,
+            isVerified=_is_verified(user),
         )
 
 
@@ -201,6 +211,8 @@ class DmConversationType:
     disappearingEnabled: str
     disappearingDurationMs: Optional[int]
     status: str
+    isBlocked: bool
+    blockedByMe: bool
 
     @classmethod
     def from_model(cls, c: Conversation, user) -> "DmConversationType":
@@ -225,6 +237,8 @@ class DmConversationType:
             disappearingEnabled=c.disappearing_enabled or "off",
             disappearingDurationMs=c.disappearing_duration_ms,
             status=c.status,
+            isBlocked=(c.status == "blocked"),
+            blockedByMe=(c.status == "blocked" and c.blocked_by_id == user.id),
         )
 
 

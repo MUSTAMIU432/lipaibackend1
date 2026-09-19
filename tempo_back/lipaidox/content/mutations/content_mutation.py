@@ -76,6 +76,15 @@ class ContentMutation:
         profile = CreatorProfile.objects.get(user=user)
         tenant = get_current_tenant()
 
+        # Written posts: 200 words, or 100 once a background makes it a customized canvas.
+        if input.contentFormat == "blog":
+            from lipaidox.content.text_limits import assert_text_post_within_limit
+            assert_text_post_within_limit(input.description, input.style)
+
+        # Plan limits (uploads / premium items per month) — see creator_plans.services.
+        from lipaidox.creator_plans.services import assert_can_create_content
+        assert_can_create_content(profile, input.accessType)
+
         with transaction.atomic():
             # 1. Handle Series
             final_series_id = input.seriesId

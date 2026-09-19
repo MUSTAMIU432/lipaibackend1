@@ -225,7 +225,13 @@ class PPVMutation:
                 purchase.access_type = ppv_access
                 purchase.amount_paid = amount
                 purchase.currency = "USD"
-                purchase.platform_fee_percent = content.platform_fee_percent or Decimal("15.00")
+                # The seller's plan sets the platform's cut (Basic 30% / Go Plus 25% /
+                # Premium 20%); content-level or the old 15% flat rate only apply
+                # when the plan sets none.
+                from lipaidox.creator_plans.services import platform_fee_percent_for
+                purchase.platform_fee_percent = platform_fee_percent_for(
+                    content.creator, content.platform_fee_percent or Decimal("15.00")
+                )
                 purchase.allow_download = content.allow_download
                 purchase.expires_at = expires_at
                 purchase.is_expired = False

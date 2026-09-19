@@ -10,6 +10,7 @@ The project virtualenv lives at `./myenv` and is not always activated — always
 ./myenv/bin/python manage.py runserver          # or: ./run.sh [port] — frees the port first, binds 0.0.0.0:8000
 ./myenv/bin/python manage.py makemigrations <app_label>
 ./myenv/bin/python manage.py migrate
+./test.sh                                                         # ALL backend suites (see "Testing" below)
 ./myenv/bin/python manage.py test lipaidox.<module>              # Django tests
 ./myenv/bin/python -m unittest forgotpassword_auth.tests.test_service   # standalone (non-Django) tests
 ./myenv/bin/pip install -r requirements.txt
@@ -62,3 +63,22 @@ There are two module families sharing the one schema: the creator-platform modul
 Uploads go to `media/`. In DEBUG, `lipaidox_backend/media_serve.ranged_media_serve` serves them with HTTP Range support (206 responses) so mobile video playback works — don't replace it with plain `static()` serving.
 
 `lipaidox/media_processor/tasks.py` defines the Celery media pipeline task `process_media_pipeline_task`, enqueued by `ContentMutation` when main video media is created; it is currently a logging no-op placeholder — extend it for transcoding/poster frames/HLS rather than adding a second pipeline. Note **no Celery app is configured** (no `celery.py`, no `CELERY_*` settings): `_schedule_main_video_processing` in `lipaidox/content/mutations/content_mutation.py` tries `.delay()` and falls back to calling the task synchronously, so don't assume a worker is running.
+
+## Testing
+
+`./test.sh` is the entry point. It runs two kinds of suite:
+
+- **DB-free** (`creator_plans`, `payment`): mocks and fakes only; run with `USE_SQLITE=True`. `./test.sh quick` runs just these.
+- **Postgres-backed** (`credits` — the live-billing engine and its GraphQL API): need the real schema, because the models use Postgres-only column types (SQLite can't build it).
+
+Django's stock runner builds a whole `test_<name>` database, which needs `CREATEDB`. The app's DB user usually doesn't have it, so the Postgres suites use `lipaidox_backend/test_runner.py` (`SchemaIsolatedRunner`, enabled by `--settings=lipaidox_backend.test_settings`): it creates a **schema** inside the existing database, confines `search_path` to it so the real tables are never touched, migrates into it, and drops it afterwards. Tests still roll back per test.
+
+```bash
+./test.sh                  # everything (first Postgres run migrates: ~1–2 min)
+./test.sh --keepdb         # keep the schema `lipaidox_test`: later runs take seconds
+./test.sh db lipaidox.credits.tests.EngineTests   # one Postgres-backed label
+TEST_DB_SCHEMA=my_schema ./test.sh db --keepdb    # pick the schema name
+```
+
+Drop a kept schema when a migration is rewritten: `DROP SCHEMA lipaidox_test CASCADE;`. New Postgres-backed suites go in the `DB=(...)` list in `test.sh`; new DB-free suites in `FAST=(...)`. Time is injected (`now=`) in the billing engine so tests don't sleep.
+

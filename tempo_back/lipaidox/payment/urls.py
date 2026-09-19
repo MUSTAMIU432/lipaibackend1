@@ -4,6 +4,7 @@ from django.urls import path
 from . import rest_views
 
 urlpatterns = [
+    path("health/", rest_views.gateway_health_view, name="gateway-health"),
     path("callback/<str:gateway>/", rest_views.gateway_callback, name="gateway-callback"),
     path("status/<str:order_reference>/", rest_views.gateway_status, name="gateway-status"),
 ]

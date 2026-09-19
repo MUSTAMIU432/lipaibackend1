@@ -41,6 +41,25 @@ def gateway_callback(request, gateway: str):
 
 
 @require_http_methods(["GET"])
+def gateway_health_view(request):
+    """
+    Is real money being taken? Public and secret-free: booleans only, so the
+    problems list (which names environment variables) stays out of the response.
+    The probe calls NBC, so it is cached briefly rather than run per request.
+    """
+    from django.core.cache import cache
+
+    from lipaidox.payment.health import gateway_health
+
+    body = cache.get("payment_gateway_health")
+    if body is None:
+        full = gateway_health(probe=True)
+        body = {k: full[k] for k in ("gateway", "live", "keyConfigured", "reachable", "authenticated")}
+        cache.set("payment_gateway_health", body, 60)
+    return JsonResponse(body, status=200 if body["live"] else 503)
+
+
+@require_http_methods(["GET"])
 def gateway_status(request, order_reference: str):
     """SPA poll target for M-Pesa / card return. Re-verifies against the provider
     and returns the settled status. No secret crosses to the browser."""

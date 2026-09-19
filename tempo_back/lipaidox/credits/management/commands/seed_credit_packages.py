@@ -1,51 +1,65 @@
 """
-Seed live-stream credit packages + a fan-credit conversion rate.
+Seed the Premium Live credit packages (PRD §3) and the fan-credit conversion rate.
 
-Package ids/amounts/prices mirror the frontend CREDIT_PACKS (lib/types.ts) so the
-Buy Credits UI and the backend agree. Idempotent (update_or_create by name).
+    100 credits = $10 = 15 min      (1 credit = $0.10 = 9 seconds)
+
+    Starter   100 credits   $10    15 min
+    Standard  500 credits   $50    1h 15m
+    Pro      1000 credits  $100    2h 30m
+    Premium  2500 credits  $250    6h 15m
+
+Packages live in the database so they can change without an app update.
+Idempotent (update_or_create by name + type). The old integer-era live packs
+("1 credit", "3 credits", ...) are switched off, not deleted.
 """
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from lipaidox.credits.models import CreditPackage, CreditConversionRate, CreditType
+from lipaidox.credits.models import CreditConversionRate, CreditPackage, CreditPackageTarget, CreditType
 
+# name, credits, price USD, minutes of Premium Live, badge
 PACKS = [
-    {"name": "1 credit",  "credit_amount": 1,  "bonus_credits": 0, "price_usd": Decimal("10"), "duration_minutes": 15,  "badge_label": ""},
-    {"name": "3 credits", "credit_amount": 3,  "bonus_credits": 0, "price_usd": Decimal("28"), "duration_minutes": 45,  "badge_label": "Popular"},
-    {"name": "5 credits", "credit_amount": 5,  "bonus_credits": 0, "price_usd": Decimal("45"), "duration_minutes": 75,  "badge_label": ""},
-    {"name": "10 credits","credit_amount": 10, "bonus_credits": 0, "price_usd": Decimal("85"), "duration_minutes": 150, "badge_label": ""},
+    ("Starter", 100, "10.00", 15, ""),
+    ("Standard", 500, "50.00", 75, ""),
+    ("Pro", 1000, "100.00", 150, "Popular"),
+    ("Premium", 2500, "250.00", 375, "Best value"),
 ]
+LEGACY = ["1 credit", "3 credits", "5 credits", "10 credits"]
 
 
 class Command(BaseCommand):
-    help = "Seed live-stream credit packages and a fan-credit conversion rate."
+    help = "Seed Premium Live credit packages and a fan-credit conversion rate."
 
     def handle(self, *args, **options):
-        for i, p in enumerate(PACKS):
+        for i, (name, credits, price, minutes, badge) in enumerate(PACKS):
             obj, created = CreditPackage.objects.update_or_create(
-                name=p["name"],
-                credit_type=CreditType.FAN_CREDIT,
+                name=name,
+                credit_type=CreditType.CREATOR_CREDIT,
                 defaults={
-                    "credit_amount": p["credit_amount"],
-                    "bonus_credits": p["bonus_credits"],
-                    "price_usd": p["price_usd"],
-                    "duration_minutes": p["duration_minutes"],
-                    "badge_label": p["badge_label"],
-                    "is_featured": p["badge_label"] == "Popular",
+                    "description": f"{credits:,} credits — {minutes} min of Premium Live",
+                    "target": CreditPackageTarget.CREATOR,
+                    "credit_amount": credits,
+                    "bonus_credits": 0,
+                    "price_usd": Decimal(price),
+                    "duration_minutes": minutes,
+                    "badge_label": badge,
+                    "is_featured": badge == "Popular",
                     "is_active": True,
                     "sort_order": i,
                 },
             )
-            self.stdout.write(("Created " if created else "Updated ") + f"{obj.name} (${obj.price_usd})")
+            self.stdout.write(("Created " if created else "Updated ") + f"{obj.name} ({credits} credits, ${obj.price_usd})")
 
-        # One fan-credit conversion rate: 1 credit -> $10 gross, 20% platform fee.
+        retired = CreditPackage.objects.filter(credit_type=CreditType.FAN_CREDIT, name__in=LEGACY).update(is_active=False)
+        self.stdout.write(f"Retired {retired} legacy live pack(s).")
+
         rate, created = CreditConversionRate.objects.get_or_create(
             credit_type=CreditType.FAN_CREDIT,
             is_active=True,
             defaults={
-                "credits_per_unit": Decimal("1"),
+                "credits_per_unit": 1,
                 "currency": "USD",
                 "monetary_value": Decimal("10"),
                 "platform_fee_percent": Decimal("20"),

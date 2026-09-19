@@ -4,6 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
+from ..services import annual_total
 from ..models import CreatorPlan, CreatorPlanSubscription, CreatorPlanPayment
 from ..constants import PlanPaymentType, PlanPaymentStatus, CreatorPlanStatus
 from ..schema.plan_schema import CreatorPlanSubscriptionType
@@ -75,6 +76,11 @@ def _apply_plan_change(user, target_tier, target_plan, amount_paid, billing_peri
     profile.plan_expires_at = sub.current_period_end
     profile.live_credits = sub.available_credits
     profile.save()
+
+    # The plan's monthly live credits go into the credit wallet (the one live
+    # billing spends from) — `available_credits` above is only a display cache.
+    from lipaidox.credits.live_billing import sync_plan_allocation
+    sync_plan_allocation(profile, target_plan)
     return sub
 
 
@@ -123,10 +129,9 @@ class CreatorPlanMutation:
                 return _result(False, "INVALID", str(exc))
             return _result(True, "OK", "Plan updated", CreatorPlanSubscriptionType.from_model(sub))
 
-        # Amount due mirrors the SPA's annual discount math (20% off, billed x12).
+        # Annual = monthly x 12 less this plan's own discount (10/15/20% by tier).
         if billing_period == "annual":
-            per = (monthly * Decimal("0.8")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            amount = (per * 12).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            amount = annual_total(target_plan)
         else:
             amount = monthly.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 

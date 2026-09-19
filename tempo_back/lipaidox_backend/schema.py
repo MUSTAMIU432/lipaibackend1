@@ -45,6 +45,9 @@ from lipaidox.admin_panel.mutations.admin_mutation import AdminPanelMutation
 from lipaidox.admin_panel.mutations.announcement_mutation import AnnouncementMutation, PlatformPostMutation
 from lipaidox.credits.queries.credits_query import CreditsQuery
 from lipaidox.credits.mutations.credits_mutation import CreditsMutation
+from lipaidox.credits.queries.live_billing_query import LiveBillingQuery
+from lipaidox.feedback.api import FeedbackMutation, FeedbackQuery
+from lipaidox.credits.mutations.live_billing_mutation import LiveBillingMutation
 from lipaidox.ppv.queries.ppv_query import PPVQuery
 from lipaidox.ppv.mutations.ppv_mutation import PPVMutation
 from lipaidox.tips.queries.tips_query import TipsQuery
@@ -137,6 +140,8 @@ class Query(
     CreatorPlanQuery,
     AdminPanelQuery,
     CreditsQuery,
+    LiveBillingQuery,
+    FeedbackQuery,
     PPVQuery,
     TipsQuery,
     WalletQuery,
@@ -192,6 +197,8 @@ class Mutation(
     AnnouncementMutation,
     PlatformPostMutation,
     CreditsMutation,
+    LiveBillingMutation,
+    FeedbackMutation,
     PPVMutation,
     TipsMutation,
     WalletMutation,

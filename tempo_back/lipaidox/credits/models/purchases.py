@@ -37,6 +37,9 @@ class CreditPurchase(models.Model):
     )
     transaction_reference = models.CharField(max_length=255, blank=True, null=True)
     gateway_reference = models.CharField(max_length=255, blank=True, null=True)
+    # Client-supplied key (the PRD's Idempotency-Key): the same key from the same
+    # user is the same purchase, so a retry can't buy — or charge — twice.
+    idempotency_key = models.CharField(max_length=255, blank=True, null=True)
 
     # Timestamps
     purchased_at = models.DateTimeField(auto_now_add=True)
@@ -59,6 +62,11 @@ class CreditPurchase(models.Model):
                 name='total_credits_check'
             ),
             models.CheckConstraint(check=models.Q(amount_paid__gt=0), name='amount_paid_check'),
+            models.UniqueConstraint(
+                fields=['user', 'idempotency_key'],
+                condition=models.Q(idempotency_key__isnull=False),
+                name='credit_purchase_idempotency_unique',
+            ),
         ]
 
     def __str__(self):

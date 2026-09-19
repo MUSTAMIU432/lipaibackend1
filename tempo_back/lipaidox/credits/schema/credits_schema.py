@@ -156,14 +156,16 @@ class CreditGiftType:
 class CreatorCreditWalletType:
     id: strawberry.ID
     creatorId: strawberry.ID
-    purchasedCredits: int
-    freeMonthlyCredits: int
-    giftedCredits: int
-    totalAvailableCredits: int
-    totalCreditsUsed: int
-    totalCreditsPurchased: int
-    totalCreditsGifted: int
-    monthlyCreditsAllocated: int
+    purchasedCredits: float
+    freeMonthlyCredits: float
+    giftedCredits: float
+    totalAvailableCredits: float
+    reservedCredits: float
+    spendableCredits: float
+    totalCreditsUsed: float
+    totalCreditsPurchased: float
+    totalCreditsGifted: float
+    monthlyCreditsAllocated: float
     monthlyResetAt: Optional[datetime]
     createdAt: datetime
     updatedAt: datetime
@@ -173,14 +175,16 @@ class CreatorCreditWalletType:
         return cls(
             id=strawberry.ID(str(instance.id)),
             creatorId=strawberry.ID(str(instance.creator_id)),
-            purchasedCredits=instance.purchased_credits,
-            freeMonthlyCredits=instance.free_monthly_credits,
-            giftedCredits=instance.gifted_credits,
-            totalAvailableCredits=instance.total_available_credits,
-            totalCreditsUsed=instance.total_credits_used,
-            totalCreditsPurchased=instance.total_credits_purchased,
-            totalCreditsGifted=instance.total_credits_gifted,
-            monthlyCreditsAllocated=instance.monthly_credits_allocated,
+            purchasedCredits=float(instance.purchased_credits),
+            freeMonthlyCredits=float(instance.free_monthly_credits),
+            giftedCredits=float(instance.gifted_credits),
+            totalAvailableCredits=float(instance.total_available_credits),
+            reservedCredits=float(instance.reserved_credits),
+            spendableCredits=float(instance.spendable_credits),
+            totalCreditsUsed=float(instance.total_credits_used),
+            totalCreditsPurchased=float(instance.total_credits_purchased),
+            totalCreditsGifted=float(instance.total_credits_gifted),
+            monthlyCreditsAllocated=float(instance.monthly_credits_allocated),
             monthlyResetAt=instance.monthly_reset_at,
             createdAt=instance.created_at,
             updatedAt=instance.updated_at,
@@ -193,9 +197,9 @@ class CreatorCreditLedgerType:
     creatorId: strawberry.ID
     walletId: strawberry.ID
     transactionType: str
-    creditsDelta: int
-    creditsBefore: int
-    creditsAfter: int
+    creditsDelta: float
+    creditsBefore: float
+    creditsAfter: float
     purchaseId: Optional[strawberry.ID]
     giftId: Optional[strawberry.ID]
     liveStreamId: Optional[strawberry.ID]
@@ -211,9 +215,9 @@ class CreatorCreditLedgerType:
             creatorId=strawberry.ID(str(instance.creator_id)),
             walletId=strawberry.ID(str(instance.wallet_id)),
             transactionType=instance.transaction_type,
-            creditsDelta=instance.credits_delta,
-            creditsBefore=instance.credits_before,
-            creditsAfter=instance.credits_after,
+            creditsDelta=float(instance.credits_delta),
+            creditsBefore=float(instance.credits_before),
+            creditsAfter=float(instance.credits_after),
             purchaseId=strawberry.ID(str(instance.purchase_id)) if instance.purchase else None,
             giftId=strawberry.ID(str(instance.gift_id)) if instance.gift else None,
             liveStreamId=str(instance.live_stream_id) if instance.live_stream_id else None,

@@ -12,6 +12,7 @@ class CreditTransactionType(models.TextChoices):
     ADMIN_GIFT = 'admin_gift', 'Admin Gift'
     MONTHLY_ALLOCATION = 'monthly_allocation', 'Monthly Allocation'
     SPENT = 'spent', 'Spent'
+    LIVE_USAGE = 'live_usage', 'Live Usage'
     EXPIRED = 'expired', 'Expired'
     REFUNDED = 'refunded', 'Refunded'
     CONVERTED = 'converted', 'Converted'

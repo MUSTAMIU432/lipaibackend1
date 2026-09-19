@@ -166,7 +166,15 @@ class LiveStreamingMutation:
                 stream.stream_url = input.streamUrl
             
             stream.start_stream()
-        
+
+            # Reserve credits before the stream is allowed to be LIVE. If the plan
+            # or balance doesn't allow it, the exception rolls the start back.
+            from lipaidox.credits import live_billing
+            try:
+                live_billing.start_billing(stream)
+            except live_billing.BillingError as exc:
+                raise Exception(str(exc))
+
         return LiveStreamType.from_model(stream)
     
     @strawberry.mutation
@@ -185,7 +193,11 @@ class LiveStreamingMutation:
         except LiveStream.DoesNotExist:
             raise Exception("Stream not found")
         
-        stream.end_stream()
+        # Bills the final stretch, moves consumed credits out of the wallet, and
+        # releases the unused part of the hold; also ends the stream.
+        from lipaidox.credits import live_billing
+        live_billing.settle(stream, reason="creator_ended")
+        stream.refresh_from_db()
         return LiveStreamType.from_model(stream)
     
     @strawberry.mutation

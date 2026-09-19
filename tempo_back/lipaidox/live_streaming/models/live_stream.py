@@ -60,8 +60,11 @@ class LiveStream(TenantAwareModel):
     duration_seconds = models.IntegerField(null=True, blank=True)
 
     # Credits Consumed
-    credits_used = models.IntegerField(default=0)
+    credits_used = models.DecimalField(max_digits=20, decimal_places=6, default=0)
     credit_deduction_interval = models.IntegerField(default=15)  # seconds
+
+    # Why the stream stopped: creator_ended | credit_exhausted | forced_ended | connection_lost
+    end_reason = models.CharField(max_length=30, blank=True, default='')
 
     # Stream Technical
     stream_key = models.CharField(max_length=255, blank=True, null=True)
@@ -148,11 +151,13 @@ class LiveStream(TenantAwareModel):
         self.started_at = timezone.now()
         self.save()
 
-    def end_stream(self):
+    def end_stream(self, reason='', ended_at=None):
         """End the live stream"""
         from django.utils import timezone
         self.status = LiveStreamStatus.ENDED
-        self.ended_at = timezone.now()
+        self.ended_at = ended_at or timezone.now()
+        if reason:
+            self.end_reason = reason
         if self.started_at:
             self.duration_seconds = int((self.ended_at - self.started_at).total_seconds())
         self.current_viewer_count = 0

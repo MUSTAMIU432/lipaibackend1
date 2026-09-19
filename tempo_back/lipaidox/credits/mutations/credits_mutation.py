@@ -1,6 +1,6 @@
 import enum
 import strawberry
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.db.models import Q
 from typing import Optional, List
@@ -56,7 +56,7 @@ class PurchaseCreditPackResult:
     success: bool
     code: str          # "OK" | "INSUFFICIENT_FUNDS" | "PAYMENT_FAILED" | "INVALID"
     message: str
-    credit_balance: int
+    credit_balance: float
     wallet_balance: float
 
 
@@ -70,9 +70,14 @@ class CreditsMutation:
         payment_source: CreditPaymentSource = CreditPaymentSource.WALLET,
         method: Optional[str] = None,
         simulate: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> PurchaseCreditPackResult:
         """Buy a credit pack with real money (wallet or gateway) and deposit the
-        credits (incl. bonus) into the fan credit wallet."""
+        credits (incl. bonus) into the wallet that matches the pack (creator packs
+        → live credits).
+
+        `idempotencyKey` makes a retry safe: the same key from the same user is the
+        same purchase, so a repeated request neither charges nor credits twice."""
         user = require_auth(info)
         from lipaidox.wallet.services import (
             spend_fan_to_platform, credit_fan_wallet, get_or_create_fan_wallet,
@@ -83,9 +88,17 @@ class CreditsMutation:
         def _money():
             return float(get_or_create_fan_wallet(user).balance)
 
-        def _credits():
+        def _credits(creator_pack=False):
+            # A creator pack pays for live time, so its balance is the creator's
+            # live-credit wallet (what can still be spent); anything else is the
+            # fan wallet used for gifts.
+            if creator_pack:
+                from lipaidox.creator_profile.models import CreatorProfile
+                from .. import live_billing
+                profile = CreatorProfile.objects.filter(user=user).first()
+                return float(live_billing.get_or_create_wallet(profile).spendable_credits) if profile else 0.0
             w, _ = FanCreditWallet.objects.get_or_create(fan=user)
-            return int(w.total_available_credits)
+            return float(w.total_available_credits)
 
         try:
             package = CreditPackage.objects.get(id=package_id, is_active=True)
@@ -94,6 +107,38 @@ class CreditsMutation:
                 success=False, code="INVALID", message="Package not found",
                 credit_balance=_credits(), wallet_balance=_money(),
             )
+
+        creator_pack = package.credit_type == CreditType.CREATOR_CREDIT
+
+        def _already(prior):
+            done = prior.status == CreditTransactionStatus.COMPLETED
+            return PurchaseCreditPackResult(
+                success=done, code="OK" if done else "PENDING",
+                message="Already processed" if done else "This purchase is still being processed.",
+                credit_balance=_credits(creator_pack), wallet_balance=_money(),
+            )
+
+        if idempotency_key:
+            prior = CreditPurchase.objects.filter(user=user, idempotency_key=idempotency_key).first()
+            if prior is not None:
+                if prior.package_id != package.id:
+                    return PurchaseCreditPackResult(
+                        success=False, code="INVALID",
+                        message="That idempotency key was already used for a different purchase.",
+                        credit_balance=_credits(creator_pack), wallet_balance=_money(),
+                    )
+                return _already(prior)
+
+        creator_profile = None
+        if creator_pack:
+            from lipaidox.creator_profile.models import CreatorProfile
+            creator_profile = CreatorProfile.objects.filter(user=user).first()
+            if creator_profile is None:
+                return PurchaseCreditPackResult(
+                    success=False, code="INVALID",
+                    message="Only creators can buy live credits.",
+                    credit_balance=0.0, wallet_balance=_money(),
+                )
 
         price = Decimal(str(package.price_usd))
 
@@ -112,7 +157,7 @@ class CreditsMutation:
             if charge.status != ChargeStatus.SUCCEEDED:
                 return PurchaseCreditPackResult(
                     success=False, code="PAYMENT_FAILED", message="Payment failed",
-                    credit_balance=_credits(), wallet_balance=_money(),
+                    credit_balance=_credits(creator_pack), wallet_balance=_money(),
                 )
             credit_fan_wallet(user, price)
 
@@ -123,27 +168,40 @@ class CreditsMutation:
                     package=package, credits_purchased=package.credit_amount,
                     bonus_credits=package.bonus_credits, total_credits=package.total_credits,
                     amount_paid=price, currency="USD", status=CreditTransactionStatus.PENDING,
+                    idempotency_key=idempotency_key or None,
                 )
                 # Debit the money wallet for the pack.
                 spend_fan_to_platform(
                     fan_user=user, amount=price, tx_type=TransactionType.CREDIT_PURCHASE,
                     description=f"Credit pack: {package.name}", credit_purchase_id=purchase.id,
                 )
-                wallet, _ = FanCreditWallet.objects.get_or_create(fan=user)
+                if creator_pack:
+                    from .. import live_billing
+                    live_billing.get_or_create_wallet(creator_profile)
+                    wallet = CreatorCreditWallet.objects.select_for_update().get(creator=creator_profile)
+                else:
+                    wallet, _ = FanCreditWallet.objects.get_or_create(fan=user)
                 wallet.add_purchased_credits(package.total_credits, purchase.id)
                 purchase.status = CreditTransactionStatus.COMPLETED
                 purchase.completed_at = timezone.now()
                 purchase.save()
+        except IntegrityError:
+            # Two identical requests raced past the check above; the database's unique
+            # (user, key) constraint let exactly one through. Report the winner.
+            prior = CreditPurchase.objects.filter(user=user, idempotency_key=idempotency_key).first() if idempotency_key else None
+            if prior is None:
+                raise
+            return _already(prior)
         except InsufficientFunds:
             return PurchaseCreditPackResult(
                 success=False, code="INSUFFICIENT_FUNDS",
                 message="Insufficient wallet balance. Top up to continue.",
-                credit_balance=_credits(), wallet_balance=_money(),
+                credit_balance=_credits(creator_pack), wallet_balance=_money(),
             )
 
         return PurchaseCreditPackResult(
             success=True, code="OK", message="Credits added",
-            credit_balance=_credits(), wallet_balance=_money(),
+            credit_balance=_credits(creator_pack), wallet_balance=_money(),
         )
 
     # Credit Purchase Mutations
@@ -177,10 +235,7 @@ class CreditsMutation:
                 from lipaidox.creator_profile.models import CreatorProfile
                 try:
                     profile = CreatorProfile.objects.get(user=user)
-                    wallet, created = CreatorCreditWallet.objects.get_or_create(
-                        creator=profile,
-                        defaults={'tenant': user.tenant}
-                    )
+                    wallet, created = CreatorCreditWallet.objects.get_or_create(creator=profile)
                     wallet.add_purchased_credits(package.total_credits, purchase.id)
                 except CreatorProfile.DoesNotExist:
                     raise Exception("Creator profile not found")
@@ -234,10 +289,7 @@ class CreditsMutation:
                 from lipaidox.creator_profile.models import CreatorProfile
                 try:
                     profile = CreatorProfile.objects.get(user=target_user)
-                    wallet, created = CreatorCreditWallet.objects.get_or_create(
-                        creator=profile,
-                        defaults={'tenant': user.tenant}
-                    )
+                    wallet, created = CreatorCreditWallet.objects.get_or_create(creator=profile)
                     wallet.add_gifted_credits(input.creditsAmount, gift.id, input.expiresAt)
                 except CreatorProfile.DoesNotExist:
                     raise Exception("Target user is not a creator")
@@ -377,10 +429,7 @@ class CreditsMutation:
         except CreatorProfile.DoesNotExist:
             raise Exception("Creator not found")
 
-        wallet, created = CreatorCreditWallet.objects.get_or_create(
-            creator=profile,
-            defaults={'tenant': user.tenant}
-        )
+        wallet, created = CreatorCreditWallet.objects.get_or_create(creator=profile)
 
         wallet.allocate_monthly_credits(amount)
         return CreatorCreditWalletType.from_model(wallet)
@@ -406,7 +455,12 @@ class CreditsMutation:
             sort_order=input.sortOrder or 0,
             badge_label=input.badgeLabel
         )
+        package.refresh_from_db()
 
+        from ..audit import record_audit
+        record_audit(info, "CREDIT_PACKAGE_CREATED", "credit_package", package.id, new={
+            "name": package.name, "credits": package.credit_amount, "price_usd": str(package.price_usd),
+        })
         return CreditPackageType.from_model(package)
 
     @strawberry.mutation
@@ -425,6 +479,10 @@ class CreditsMutation:
         except CreditPackage.DoesNotExist:
             raise Exception("Credit package not found")
 
+        before = {
+            "name": package.name, "price_usd": str(package.price_usd), "bonus_credits": package.bonus_credits,
+            "is_active": package.is_active, "is_featured": package.is_featured,
+        }
         if input.name is not None:
             package.name = input.name
         if input.description is not None:
@@ -443,6 +501,12 @@ class CreditsMutation:
             package.badge_label = input.badgeLabel
 
         package.save()
+        package.refresh_from_db()   # audit what was actually stored (e.g. 12.50), not the raw input
+        from ..audit import record_audit
+        record_audit(info, "CREDIT_PACKAGE_UPDATED", "credit_package", package.id, old=before, new={
+            "name": package.name, "price_usd": str(package.price_usd), "bonus_credits": package.bonus_credits,
+            "is_active": package.is_active, "is_featured": package.is_featured,
+        })
         return CreditPackageType.from_model(package)
 
     @strawberry.mutation
@@ -453,7 +517,11 @@ class CreditsMutation:
 
         try:
             package = CreditPackage.objects.get(id=packageId)
+            snapshot = {"name": package.name, "credits": package.credit_amount, "price_usd": str(package.price_usd)}
+            package_pk = package.id
             package.delete()
+            from ..audit import record_audit
+            record_audit(info, "CREDIT_PACKAGE_DELETED", "credit_package", package_pk, old=snapshot)
             return True
         except CreditPackage.DoesNotExist:
             raise Exception("Credit package not found")

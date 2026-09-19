@@ -26,7 +26,8 @@ class LiveStreamType:
     startedAt: Optional[datetime]
     endedAt: Optional[datetime]
     durationSeconds: Optional[int]
-    creditsUsed: int
+    creditsUsed: float
+    endReason: Optional[str]
     creditDeductionInterval: int
     streamKey: Optional[str]
     streamUrl: Optional[str]
@@ -71,7 +72,8 @@ class LiveStreamType:
             startedAt=instance.started_at,
             endedAt=instance.ended_at,
             durationSeconds=instance.duration_seconds,
-            creditsUsed=instance.credits_used,
+            creditsUsed=float(instance.credits_used),
+            endReason=instance.end_reason or None,
             creditDeductionInterval=instance.credit_deduction_interval,
             streamKey=instance.stream_key,
             streamUrl=instance.stream_url,
