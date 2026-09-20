@@ -16,6 +16,7 @@ from ..schema.content_schema import (
 )
 from multitenant.utils.tenant_context import get_current_tenant
 from lipaidox.auth.permissions import require_creator, require_creator_or_admin
+from lipaidox.media_processor import cloudinary_service
 
 logger = logging.getLogger(__name__)
 
@@ -408,8 +409,18 @@ class ContentMutation:
         user = info.context.request.user
         if media.content.creator.user != user:
             raise Exception("You can only delete media belonging to your content")
-        
+
+        # Capture before the row goes: the URL is the only handle on the stored
+        # asset. Legacy local `/media/...` URLs are ignored by destroy_by_url.
+        stored_urls = [media.file_url, media.thumbnail_url]
+
         media.delete()
+
+        # Best effort, after the row is gone: the database is the source of truth,
+        # and a storage hiccup must not resurrect media the creator deleted.
+        for url in stored_urls:
+            if url:
+                cloudinary_service.destroy_by_url(url)
         return True
 
     @strawberry.mutation

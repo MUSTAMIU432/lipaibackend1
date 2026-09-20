@@ -326,6 +326,72 @@ MEDIA_URL = "/media/"
 # Unset — the default below — keeps today's behaviour for local dev.
 MEDIA_ROOT = Path(config("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 
+if not DEBUG and MEDIA_ROOT.resolve().is_relative_to(BASE_DIR.resolve()):
+    # Every uploaded photo/video becomes a 404 the next time the service restarts or
+    # redeploys, while the posts that point at them stay in the database — the feed then
+    # shows posts whose media "won't play". Loud on purpose: it is the #1 cause of that.
+    import logging as _logging
+
+    _logging.getLogger("django.request").warning(
+        "MEDIA_ROOT (%s) is inside the app directory, which is ephemeral on Render: uploads "
+        "will be lost on restart. Attach a Render Disk and set MEDIA_ROOT to its mount path.",
+        MEDIA_ROOT,
+    )
+
+# -----------------------------
+# Cloudinary (persistent media storage)
+# -----------------------------
+# Render's filesystem is ephemeral, so uploaded photos/videos cannot live under
+# MEDIA_ROOT in production. When these three credentials are present, the REST
+# upload endpoints stream the file to Cloudinary and store the returned HTTPS
+# `secure_url` in the database instead of a local `/media/...` path.
+#
+# Credentials come from the environment only (never hardcoded, never logged).
+# With them absent the app still boots and falls back to local-disk storage, so
+# local development and CI keep working without a Cloudinary account.
+CLOUDINARY_CLOUD_NAME = config("CLOUDINARY_CLOUD_NAME", default="")
+CLOUDINARY_API_KEY = config("CLOUDINARY_API_KEY", default="")
+CLOUDINARY_API_SECRET = config("CLOUDINARY_API_SECRET", default="")
+
+CLOUDINARY_ENABLED = bool(
+    CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET
+)
+
+# Folder prefix for every asset this project uploads, so one Cloudinary account
+# can host several environments without collisions.
+CLOUDINARY_FOLDER = config("CLOUDINARY_FOLDER", default="lipaidox")
+
+if CLOUDINARY_ENABLED:
+    import cloudinary as _cloudinary
+
+    _cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
+    # Names only — never the key or secret.
+    _settings_log.info(
+        "Cloudinary configuration detected (cloud_name=%s, folder=%s).",
+        CLOUDINARY_CLOUD_NAME,
+        CLOUDINARY_FOLDER,
+    )
+elif not DEBUG:
+    _missing = [
+        name
+        for name, value in (
+            ("CLOUDINARY_CLOUD_NAME", CLOUDINARY_CLOUD_NAME),
+            ("CLOUDINARY_API_KEY", CLOUDINARY_API_KEY),
+            ("CLOUDINARY_API_SECRET", CLOUDINARY_API_SECRET),
+        )
+        if not value
+    ]
+    _settings_log.warning(
+        "WARNING: Cloudinary credentials are not fully configured (missing: %s). "
+        "Uploads will fall back to MEDIA_ROOT, which is ephemeral on Render.",
+        ", ".join(_missing),
+    )
+
 # Accept larger GraphQL JSON bodies (e.g. upload metadata/data URLs sent by the frontend).
 # Keep this configurable via .env for local/prod tuning.
 DATA_UPLOAD_MAX_MEMORY_SIZE = config(

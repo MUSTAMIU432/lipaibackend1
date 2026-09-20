@@ -29,6 +29,15 @@ def _media_relpath_from_url(file_url: str) -> str:
     marker = settings.MEDIA_URL  # e.g. "/media/"
     idx = file_url.find(marker)
     if idx == -1:
+        from . import cloudinary_service
+
+        if cloudinary_service.is_cloudinary_url(file_url):
+            # Trimming reads and rewrites a file on local disk; a Cloudinary asset
+            # has none. Supporting it means download → trim → re-upload, which is
+            # deliberately not done here rather than failing obscurely mid-edit.
+            raise video_ops.VideoOpError(
+                "Trimming is not available for media stored on Cloudinary."
+            )
         raise video_ops.VideoOpError(f"file_url is not under MEDIA_URL: {file_url}")
     return file_url[idx + len(marker):].split("?", 1)[0]
 

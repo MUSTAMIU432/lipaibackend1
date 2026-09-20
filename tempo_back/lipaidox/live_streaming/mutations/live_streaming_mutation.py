@@ -14,6 +14,7 @@ from ..schema.live_streaming_schema import (
     SendChatMessageInput, JoinStreamInput, LeaveStreamInput
 )
 from lipaidox.auth.permissions import UserRoles
+from lipaidox.media_processor import cloudinary_service
 
 MAX_MEDIA_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
@@ -545,5 +546,10 @@ class LiveStreamingMutation:
         if media.uploaded_by != user and media.live_stream.creator.user != user:
             raise Exception("Permission denied")
 
+        stored_url = media.file_url
         media.delete()
+
+        # Best effort once the row is gone; legacy `/media/...` URLs are skipped.
+        if stored_url:
+            cloudinary_service.destroy_by_url(stored_url)
         return True

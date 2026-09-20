@@ -1,3 +1,4 @@
+import logging
 import mimetypes
 import os
 import uuid
@@ -5,6 +6,9 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from lipaidox.auth.jwt_auth import authenticate_request
+from lipaidox.media_processor import cloudinary_service
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
@@ -45,6 +49,42 @@ _MAX_CONTENT_ARCHIVE = 500 * 1024 * 1024
 _MAX_CONTENT_AUDIO = 30 * 1024 * 1024
 
 
+def _store_locally(file, *, domain: str, user_id, filename: str) -> str:
+    """
+    Write the upload under MEDIA_ROOT and return its MEDIA_URL path.
+
+    The pre-Cloudinary behaviour, kept for local development and for any
+    environment without Cloudinary credentials. On Render this storage is
+    ephemeral — see the MEDIA_ROOT note in settings.
+    """
+    upload_dir = os.path.join(settings.MEDIA_ROOT, domain, str(user_id))
+    os.makedirs(upload_dir, exist_ok=True)
+
+    filepath = os.path.join(upload_dir, filename)
+    with open(filepath, "wb+") as dest:
+        for chunk in file.chunks():
+            dest.write(chunk)
+
+    return f"{settings.MEDIA_URL}{domain}/{user_id}/{filename}"
+
+
+def _store_upload(file, *, domain: str, user_id, content_type: str, filename: str) -> str:
+    """
+    Persist an upload and return the URL to store in the database.
+
+    Cloudinary when it is configured (an absolute HTTPS URL that survives a
+    Render restart), otherwise the local MEDIA_ROOT path. Raises
+    ``CloudinaryUploadError`` when a configured Cloudinary upload fails, so the
+    caller can answer with a meaningful status instead of a bare 500.
+    """
+    if cloudinary_service.is_enabled():
+        result = cloudinary_service.upload_file(
+            file, domain=domain, user_id=user_id, content_type=content_type
+        )
+        return result.secure_url
+    return _store_locally(file, domain=domain, user_id=user_id, filename=filename)
+
+
 def _get_user(request):
     """Authenticate via Bearer token and return the User, or None."""
     authenticate_request(request)
@@ -82,15 +122,17 @@ def upload_profile_photo(request):
 
     ext = os.path.splitext(file.name)[1].lower() or ".jpg"
     filename = f"{photo_type}_{user.id}_{uuid.uuid4().hex[:8]}{ext}"
-    upload_dir = os.path.join(settings.MEDIA_ROOT, "profiles", str(user.id))
-    os.makedirs(upload_dir, exist_ok=True)
 
-    filepath = os.path.join(upload_dir, filename)
-    with open(filepath, "wb+") as dest:
-        for chunk in file.chunks():
-            dest.write(chunk)
-
-    url = f"{settings.MEDIA_URL}profiles/{user.id}/{filename}"
+    try:
+        url = _store_upload(
+            file,
+            domain="profiles",
+            user_id=user.id,
+            content_type=file.content_type,
+            filename=filename,
+        )
+    except cloudinary_service.CloudinaryUploadError as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status_code)
 
     try:
         profile = user.profile
@@ -100,7 +142,16 @@ def upload_profile_photo(request):
             profile.cover_photo_url = url
         profile.save(update_fields=[f"{photo_type}_photo_url" if photo_type == "cover" else "profile_photo_url"])
     except Exception:
-        pass
+        # The photo is stored but no row points at it. Drop the remote copy so a
+        # retry does not accumulate orphaned assets; the local-disk branch keeps
+        # its previous best-effort behaviour of leaving the file in place.
+        logger.error(
+            "Profile photo saved to storage but profile update failed (user=%s)",
+            user.id,
+            exc_info=True,
+        )
+        cloudinary_service.destroy_by_url(url)
+        return JsonResponse({"error": "Could not save the photo to your profile."}, status=500)
 
     return JsonResponse({"url": url, "type": photo_type})
 
@@ -137,7 +188,10 @@ def _content_upload_allowed_type(content_type: str) -> bool:
 def upload_content_media(request):
     """
     Store binary for GraphQL `fileUrl` fields (main media, thumbnails, attachments, slides).
-    Returns a persistent MEDIA_URL path, not a browser `blob:` URL.
+
+    Returns `{"url": ...}` — an absolute Cloudinary HTTPS URL when Cloudinary is
+    configured, otherwise a local MEDIA_URL path. Either way it is a durable URL
+    the client stores on the GraphQL record, never a browser `blob:` URL.
     """
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=405)
@@ -188,13 +242,21 @@ def upload_content_media(request):
             ext = ".bin"
 
     filename = f"{uuid.uuid4().hex}{ext}"
-    upload_dir = os.path.join(settings.MEDIA_ROOT, "content", str(user.id))
-    os.makedirs(upload_dir, exist_ok=True)
 
-    filepath = os.path.join(upload_dir, filename)
-    with open(filepath, "wb+") as dest:
-        for chunk in file.chunks():
-            dest.write(chunk)
+    try:
+        url = _store_upload(
+            file,
+            domain="content",
+            user_id=user.id,
+            content_type=ct,
+            filename=filename,
+        )
+    except cloudinary_service.CloudinaryUploadError as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status_code)
+    except OSError:
+        # Local-disk branch: a full or read-only volume must not surface as an
+        # unexplained 500 the app cannot act on.
+        logger.error("Local media write failed (user=%s)", user.id, exc_info=True)
+        return JsonResponse({"error": "Could not store the uploaded file."}, status=507)
 
-    url = f"{settings.MEDIA_URL}content/{user.id}/{filename}"
     return JsonResponse({"url": url})

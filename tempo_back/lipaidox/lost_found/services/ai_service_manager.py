@@ -408,13 +408,44 @@ class AIServiceManager:
             raise Exception(f"Failed to create item record: {e}")
     
     def _save_image_record(self, image_file, item: LostFoundItem, ai_results: Dict) -> ItemImage:
-        """Save image and create ItemImage record"""
+        """
+        Persist the image and create its ItemImage record.
+
+        Storage goes to Cloudinary when configured — MEDIA_ROOT is wiped on every
+        Render restart, which would leave the row pointing at nothing. The AI
+        services above already ran against the in-memory upload, so moving the
+        durable copy off local disk does not affect them.
+        """
         try:
-            # Save image file
-            file_path = default_storage.save(f"lost_found/{item.id}/{image_file.name}", image_file)
-            
+            from lipaidox.media_processor import cloudinary_service
+
+            # The AI pipeline has read the file; rewind before storing it again.
+            try:
+                image_file.seek(0)
+            except Exception:  # pragma: no cover - not all file-likes seek
+                pass
+
+            if cloudinary_service.is_enabled():
+                uploaded = cloudinary_service.upload_file(
+                    image_file,
+                    domain="lost_found",
+                    user_id=item.id,
+                    content_type=getattr(image_file, "content_type", "image/jpeg"),
+                )
+                # file_path holds a full HTTPS URL in this mode; readers go
+                # through _open_item_image() rather than default_storage.
+                file_path = uploaded.secure_url
+            else:
+                file_path = default_storage.save(
+                    f"lost_found/{item.id}/{image_file.name}", image_file
+                )
+
             # Get image dimensions
             from PIL import Image as PILImage
+            try:
+                image_file.seek(0)
+            except Exception:  # pragma: no cover
+                pass
             img = PILImage.open(image_file)
             width, height = img.size
             

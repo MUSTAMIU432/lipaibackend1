@@ -20,6 +20,34 @@ from ..models.lost_found import LostFoundItem, ItemImage, ProductCache
 User = get_user_model()
 
 
+def _open_item_image(image: ItemImage):
+    """
+    Reopen a stored ItemImage for reprocessing, wherever it lives.
+
+    ``file_path`` holds a Cloudinary HTTPS URL for images stored since that
+    integration, and a MEDIA_ROOT-relative path for older ones. Returns a
+    readable file-like, or None when the image is gone (legacy rows whose local
+    file was lost to a Render restart).
+    """
+    path = image.file_path
+    if not path:
+        return None
+
+    from lipaidox.media_processor import cloudinary_service
+
+    if cloudinary_service.is_cloudinary_url(path):
+        try:
+            data = cloudinary_service.fetch_bytes(path)
+        except cloudinary_service.CloudinaryUploadError:
+            return None
+        # Named so downstream code that inspects `.name` keeps working.
+        return ContentFile(data, name=image.original_filename or "image.jpg")
+
+    if default_storage.exists(path):
+        return default_storage.open(path)
+    return None
+
+
 @shared_task(bind=True, max_retries=3)
 def process_ai_features_async(self, image_id: str, item_id: str, service_names: list = None):
     """
@@ -31,10 +59,8 @@ def process_ai_features_async(self, image_id: str, item_id: str, service_names: 
         item = LostFoundItem.objects.get(id=item_id)
         
         # Get image file
-        image_file = None
-        if image.file_path and default_storage.exists(image.file_path):
-            image_file = default_storage.open(image.file_path)
-        
+        image_file = _open_item_image(image)
+
         if not image_file:
             raise Exception("Image file not found")
         
