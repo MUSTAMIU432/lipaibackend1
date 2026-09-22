@@ -74,6 +74,26 @@ class ProfileQuery:
         return [CreatorProfileType.from_model(p) for p in profiles]
 
     @strawberry.field
+    def people_you_may_know(self, info: strawberry.types.Info, limit: int = 12) -> List[CreatorProfileType]:
+        """The signup flow's "follow some people" step — real accounts,
+        newest profiles first. Not a personalized recommendation (this app
+        has no signal to base one on yet); it's an honest, always-populated
+        default list, minus yourself and anyone you already follow. Unlike
+        `search_profiles`, it doesn't filter on `status='complete'` — nothing
+        in this codebase ever sets that field, so that filter would leave
+        this screen empty for every user."""
+        tenant = get_current_tenant()
+        user = info.context.request.user
+        qs = CreatorProfile.objects.filter(tenant=tenant)
+        if user.is_authenticated:
+            qs = qs.exclude(user=user)
+            from ..models.follow import Follow
+            following_ids = Follow.objects.filter(follower=user).values_list("followed_id", flat=True)
+            qs = qs.exclude(user_id__in=list(following_ids))
+        profiles = qs.order_by('-created_at')[:limit]
+        return [CreatorProfileType.from_model(p) for p in profiles]
+
+    @strawberry.field
     def my_followers(self, info: strawberry.types.Info, offset: int = 0, limit: int = 20) -> FollowListType:
         from ..models.follow import Follow
         user = info.context.request.user
