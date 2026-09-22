@@ -1,12 +1,48 @@
 import strawberry
 from typing import List, Optional
 from django.db import models
-from ..models import CreatorProfile
+from ..models import CreatorProfile, is_username_available
 from ..schema.profile_schema import CreatorProfileType, FollowUserType, FollowListType
+from ..schema.eligibility_schema import (
+    CreatorEligibilityType,
+    compute_creator_eligibility,
+    compute_subscription_eligibility,
+)
 from multitenant.utils.tenant_context import get_current_tenant
 
 @strawberry.type
 class ProfileQuery:
+    @strawberry.field
+    def my_creator_eligibility(self, info: strawberry.types.Info) -> Optional[CreatorEligibilityType]:
+        """Nine real checks against the current user's own data — see
+        `eligibility_schema.py` for what each one reads and why."""
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return None
+        return compute_creator_eligibility(user)
+
+    @strawberry.field
+    def my_subscription_eligibility(self, info: strawberry.types.Info) -> Optional[CreatorEligibilityType]:
+        """The Subscriptions setup wizard's own three-check gate — see
+        `compute_subscription_eligibility` for what each one reads."""
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return None
+        return compute_subscription_eligibility(user)
+
+    @strawberry.field
+    def username_available(self, info: strawberry.types.Info, username: str) -> bool:
+        """Live check for the "Change username" screen — reuses the same
+        `is_username_available` the `updateProfile` mutation itself enforces,
+        so a green "Available" here can't disagree with what saving does."""
+        user = info.context.request.user
+        tenant = get_current_tenant()
+        candidate = (username or "").strip()
+        if len(candidate) < 3:
+            return False
+        exclude = user if user.is_authenticated else None
+        return is_username_available(candidate, tenant, exclude_user=exclude)
+
     @strawberry.field
     def my_profile(self, info: strawberry.types.Info) -> Optional[CreatorProfileType]:
         user = info.context.request.user

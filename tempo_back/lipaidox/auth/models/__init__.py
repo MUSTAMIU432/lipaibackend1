@@ -4,6 +4,7 @@ from .phone_verification import PhoneVerification
 from .password_reset_token import PasswordResetToken
 from .password_reset_otp import PasswordResetOtp, PasswordResetOtpStatus
 from .refresh_token import RefreshToken
+from .two_factor import TwoFactorAuth, BackupCode, TwoFactorLoginChallenge, generate_backup_codes
 
 __all__ = [
     "User",
@@ -13,4 +14,8 @@ __all__ = [
     "PasswordResetOtp",
     "PasswordResetOtpStatus",
     "RefreshToken",
+    "TwoFactorAuth",
+    "BackupCode",
+    "TwoFactorLoginChallenge",
+    "generate_backup_codes",
 ]

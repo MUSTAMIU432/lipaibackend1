@@ -60,25 +60,33 @@ def release_username(username, tenant):
 
 
 def is_username_available(username, tenant, exclude_user=None):
-    """Check if username is available for use"""
-    # Debug logging
-    print(f"DEBUG is_username_available: username='{username}', tenant='{tenant}', exclude_user='{exclude_user.username if exclude_user else None}'")
-    
-    # Check if username is currently in use
-    query = UsernameHistory.objects.filter(
+    """Check if username is available for use.
+
+    Two independent things can make a username unavailable, and both are
+    checked: it's the *current* username of some other account (the actual
+    unique columns on `User`/`CreatorProfile` — not every signup path calls
+    `reserve_username`, so `UsernameHistory` alone used to miss these and
+    call a genuinely-taken name "available"), or it was recently released by
+    someone else and is still cooling down in `UsernameHistory`.
+    """
+    from lipaidox.auth.models import User
+    from .profile import CreatorProfile
+
+    user_qs = User.objects.filter(username__iexact=username, tenant=tenant)
+    profile_qs = CreatorProfile.objects.filter(username__iexact=username, tenant=tenant)
+    if exclude_user:
+        user_qs = user_qs.exclude(id=exclude_user.id)
+        profile_qs = profile_qs.exclude(user=exclude_user)
+    if user_qs.exists() or profile_qs.exists():
+        return False
+
+    # Check the recycling ledger for anyone still holding a claim on it.
+    history_qs = UsernameHistory.objects.filter(
         username=username,
         tenant=tenant,
-        is_available=False
+        is_available=False,
     )
-    
-    print(f"DEBUG: Base query count: {query.count()}")
-    
     if exclude_user:
-        query = query.exclude(user=exclude_user)
-        print(f"DEBUG: After exclude query count: {query.count()}")
-    
-    exists = query.exists()
-    result = not exists
-    print(f"DEBUG: Final result: {result}")
-    
-    return result
+        history_qs = history_qs.exclude(user=exclude_user)
+
+    return not history_qs.exists()

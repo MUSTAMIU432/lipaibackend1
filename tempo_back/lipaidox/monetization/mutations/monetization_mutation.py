@@ -61,6 +61,10 @@ class MonetizationMutation:
                 settings.tips_enabled = input.tipsEnabled
             if input.subscriptionBillingCycle:
                 settings.subscription_billing_cycle = input.subscriptionBillingCycle
+            if input.subscriptionDescription is not None:
+                settings.subscription_description = input.subscriptionDescription
+            if input.subscriptionBenefits is not None:
+                settings.subscription_benefits = input.subscriptionBenefits
             if input.displayCurrency:
                 settings.display_currency = input.displayCurrency
 

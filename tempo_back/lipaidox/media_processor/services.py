@@ -15,7 +15,7 @@ from django.conf import settings
 
 from lipaidox.content.models import ContentMedia
 
-from . import video_ops
+from . import cloudinary_service, video_ops
 
 
 def _media_relpath_from_url(file_url: str) -> str:
@@ -29,15 +29,6 @@ def _media_relpath_from_url(file_url: str) -> str:
     marker = settings.MEDIA_URL  # e.g. "/media/"
     idx = file_url.find(marker)
     if idx == -1:
-        from . import cloudinary_service
-
-        if cloudinary_service.is_cloudinary_url(file_url):
-            # Trimming reads and rewrites a file on local disk; a Cloudinary asset
-            # has none. Supporting it means download → trim → re-upload, which is
-            # deliberately not done here rather than failing obscurely mid-edit.
-            raise video_ops.VideoOpError(
-                "Trimming is not available for media stored on Cloudinary."
-            )
         raise video_ops.VideoOpError(f"file_url is not under MEDIA_URL: {file_url}")
     return file_url[idx + len(marker):].split("?", 1)[0]
 
@@ -57,6 +48,19 @@ def trim_content_media(media: ContentMedia, start_seconds: float, end_seconds: f
     Returns the same (refreshed) instance. Raises VideoOpError on any failure,
     leaving the original file and row untouched.
     """
+    if cloudinary_service.is_cloudinary_url(media.file_url):
+        # No local file to run ffmpeg on: Cloudinary cuts its own copy.
+        try:
+            trimmed = cloudinary_service.trim_video(media.file_url, start_seconds, end_seconds)
+        except cloudinary_service.CloudinaryUploadError as exc:
+            raise video_ops.VideoOpError(str(exc)) from exc
+        media.file_url = trimmed.secure_url
+        if trimmed.bytes:
+            media.file_size_bytes = trimmed.bytes
+        media.duration_seconds = trimmed.duration_seconds
+        media.save(update_fields=["file_url", "file_size_bytes", "duration_seconds"])
+        return media
+
     relpath = _media_relpath_from_url(media.file_url)
     src_abs = Path(settings.MEDIA_ROOT) / relpath
     new_abs = Path(video_ops.trim_file(str(src_abs), start_seconds, end_seconds))

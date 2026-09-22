@@ -13,6 +13,7 @@ from ..schema.credits_schema import (
     FanCreditWalletType, FanCreditLedgerType, FanCreditGiftSentType,
     EarningsCalculationType
 )
+from ..seed import ensure_default_packages
 from lipaidox.auth.permissions import UserRoles
 
 
@@ -50,6 +51,9 @@ class CreditsQuery:
         isActive: Optional[bool] = True
     ) -> List[CreditPackageType]:
         """Get available credit packages"""
+        if creditType in (None, CreditType.CREATOR_CREDIT):
+            # A database with no creator packs at all gets the standard ones.
+            ensure_default_packages()
         queryset = CreditPackage.objects.all()
 
         if isActive is not None:

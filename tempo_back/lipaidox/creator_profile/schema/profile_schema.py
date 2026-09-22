@@ -21,6 +21,9 @@ class CreatorProfileType:
     areaOfInterest: Optional[str]
     contentCategories: List[str]
     socialInstagram: Optional[str]
+    socialTwitter: Optional[str]
+    socialTiktok: Optional[str]
+    socialYoutube: Optional[str]
     status: str
     isVerified: bool
     creatorTier: str
@@ -35,6 +38,20 @@ class CreatorProfileType:
     # hasn't priced/enabled subscriptions.
     subscriptionPrice: Optional[float] = None
     subscriptionEnabled: bool = False
+    # Set on the "Switch to Creator" wizard's Business path; a plain Creator
+    # account leaves everything below unset.
+    accountKind: str = "creator"
+    businessCategory: Optional[str] = None
+    showCategoryOnProfile: bool = True
+    businessName: Optional[str] = None
+    businessEmail: Optional[str] = None
+    businessPhone: Optional[str] = None
+    businessAddress: Optional[str] = None
+    businessWebsite: Optional[str] = None
+    contactShowEmail: bool = True
+    contactShowPhone: bool = True
+    contactShowWhatsapp: bool = True
+    contactShowDirections: bool = False
 
     @classmethod
     def from_model(cls, instance: CreatorProfile):
@@ -68,6 +85,9 @@ class CreatorProfileType:
             areaOfInterest=instance.area_of_interest,
             contentCategories=list(instance.content_categories or []),
             socialInstagram=instance.social_instagram,
+            socialTwitter=instance.social_twitter,
+            socialTiktok=instance.social_tiktok,
+            socialYoutube=instance.social_youtube,
             status=instance.status,
             isVerified=instance.is_verified,
             creatorTier=instance.creator_tier,
@@ -81,6 +101,18 @@ class CreatorProfileType:
             createdAt=instance.created_at,
             subscriptionPrice=sub_price,
             subscriptionEnabled=sub_enabled,
+            accountKind=instance.account_kind,
+            businessCategory=instance.business_category,
+            showCategoryOnProfile=instance.show_category_on_profile,
+            businessName=instance.business_name,
+            businessEmail=instance.business_email,
+            businessPhone=instance.business_phone,
+            businessAddress=instance.business_address,
+            businessWebsite=instance.business_website,
+            contactShowEmail=instance.contact_show_email,
+            contactShowPhone=instance.contact_show_phone,
+            contactShowWhatsapp=instance.contact_show_whatsapp,
+            contactShowDirections=instance.contact_show_directions,
         )
 
 @strawberry.input
@@ -104,6 +136,9 @@ class UpdateProfileInput:
     preferredLanguage: Optional[str] = None
     timezone: Optional[str] = None
     socialInstagram: Optional[str] = None
+    socialTwitter: Optional[str] = None
+    socialTiktok: Optional[str] = None
+    socialYoutube: Optional[str] = None
 
 @strawberry.type
 class FollowUserType:

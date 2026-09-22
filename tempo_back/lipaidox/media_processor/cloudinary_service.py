@@ -223,9 +223,11 @@ def parse_cloudinary_url(url: str) -> tuple[str, str] | None:
         return None
 
     rest = match.group("rest")
-    # Drop the optional version segment ("v1699999999/").
-    if re.match(r"^v\d+/", rest):
-        rest = rest.split("/", 1)[1]
+    # Everything up to and including the version segment ("so_5,eo_20/v1699999999/")
+    # is delivery transformation, not part of the public id.
+    version = re.search(r"(?:^|/)v\d+/", rest)
+    if version:
+        rest = rest[version.end():]
     # `raw` keeps its extension as part of the public id; image/video do not.
     if match.group("resource_type") != "raw":
         rest = rest.rsplit(".", 1)[0]
@@ -288,3 +290,62 @@ def destroy_by_url(url: str) -> bool:
         )
         return False
     return True
+
+
+# ── Trimming ────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class TrimResult:
+    """The trimmed rendition of a stored video."""
+
+    secure_url: str
+    bytes: int | None
+    duration_seconds: int
+
+
+def trim_video(url: str, start_seconds: float, end_seconds: float) -> TrimResult:
+    """
+    Cut a stored Cloudinary video to ``[start, end]`` seconds.
+
+    Cloudinary does the cutting (start/end offsets on an eagerly generated
+    rendition), so nothing is downloaded and there is no ffmpeg on the web
+    server. The original asset stays untouched, like the local-disk trim; the
+    row is pointed at the rendition's URL. Raises :class:`CloudinaryUploadError`.
+    """
+    parsed = parse_cloudinary_url(url)
+    if not parsed or parsed[1] != "video":
+        raise CloudinaryUploadError("This media is not a Cloudinary video.", status_code=400)
+    if not is_enabled():
+        raise CloudinaryUploadError("Media storage is not configured on this server.", status_code=503)
+    if not end_seconds > start_seconds >= 0:
+        raise CloudinaryUploadError("The trim range is not valid.", status_code=400)
+    public_id, _ = parsed
+
+    import cloudinary.uploader
+
+    try:
+        result = cloudinary.uploader.explicit(
+            public_id,
+            type="upload",
+            resource_type="video",
+            # Synchronous: the row must point at a rendition that exists by the time
+            # this returns, or the post would show a broken video.
+            eager=[{"start_offset": round(start_seconds, 2), "end_offset": round(end_seconds, 2)}],
+            eager_async=False,
+            timeout=UPLOAD_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        logger.error("Cloudinary trim failed (public_id=%s)", public_id, exc_info=True)
+        raise CloudinaryUploadError("The video could not be trimmed. Please try again.") from exc
+
+    derived = ((result or {}).get("eager") or [None])[0] or {}
+    secure_url = derived.get("secure_url") or derived.get("url")
+    if not secure_url:
+        logger.error("Cloudinary trim returned no rendition (public_id=%s)", public_id)
+        raise CloudinaryUploadError("Media storage returned an unusable response.")
+    return TrimResult(
+        secure_url=secure_url,
+        bytes=derived.get("bytes"),
+        duration_seconds=int(round(end_seconds - start_seconds)),
+    )

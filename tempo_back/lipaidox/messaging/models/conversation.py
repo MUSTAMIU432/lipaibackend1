@@ -80,6 +80,13 @@ class Conversation(TenantAwareModel):
     cleared_at_fan = models.DateTimeField(null=True, blank=True)
     cleared_at_creator = models.DateTimeField(null=True, blank=True)
 
+    # Message requests — set True for the recipient's side when the
+    # conversation is first created by someone that recipient doesn't follow
+    # (Instagram/X's "message request" inbox). Cleared when that side accepts,
+    # or sends a message of their own — replying is itself acceptance.
+    request_pending_for_fan = models.BooleanField(default=False)
+    request_pending_for_creator = models.BooleanField(default=False)
+
     # Locked / secret chats
     is_locked = models.BooleanField(default=False)
     lock_type = models.CharField(max_length=10, null=True, blank=True)   # pin|password
@@ -139,6 +146,22 @@ class Conversation(TenantAwareModel):
             self.archived_by_fan = False
         elif user == self.creator:
             self.archived_by_creator = False
+        self.save()
+
+    def is_request_for(self, user):
+        """True if this conversation is a pending message request for `user`."""
+        if user == self.fan:
+            return self.request_pending_for_fan
+        elif user == self.creator:
+            return self.request_pending_for_creator
+        return False
+
+    def accept_request_for(self, user):
+        """Clear the pending-request flag on `user`'s side."""
+        if user == self.fan:
+            self.request_pending_for_fan = False
+        elif user == self.creator:
+            self.request_pending_for_creator = False
         self.save()
 
     def block_conversation(self, blocked_by, reason=None):

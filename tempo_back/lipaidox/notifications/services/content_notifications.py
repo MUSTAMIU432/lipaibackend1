@@ -81,10 +81,28 @@ def _preference_allows(user):
 
 
 def notify_new_content_posted(content):
-    """Announce a newly-published post to its creator's audience. Idempotent."""
+    """Announce a newly-published post to its creator's audience. Idempotent.
+
+    The claim on `followers_notified` is a single atomic UPDATE ... WHERE
+    followers_notified = False, not a read-then-write on the Python object.
+    Two concurrent calls for the same content (a double-tapped publish button,
+    a retried request) can both read `followers_notified=False` off their own
+    in-memory copy before either write lands; a plain `content.save()` after
+    that race loses nothing, but the second call has already built its
+    recipient list and would fan out a second round of notifications. The
+    UPDATE only ever succeeds for one of them, and the loser returns early.
+    """
     try:
         if content is None or content.status != "published" or getattr(content, "followers_notified", False):
             return 0
+
+        from django.db.models import Q
+        claimed = type(content).objects.filter(
+            Q(pk=content.pk) & Q(followers_notified=False)
+        ).update(followers_notified=True)
+        if not claimed:
+            return 0
+        content.followers_notified = True
 
         from lipaidox.notifications.models.notification import Notification
         from lipaidox.notifications.models.enums import NotificationType, NotificationPriority
@@ -93,11 +111,6 @@ def notify_new_content_posted(content):
         creator_name = getattr(creator, "display_name", None) or getattr(creator, "username", "A creator")
 
         recipients = [u for u in _audience_users(creator) if _preference_allows(u)]
-
-        # Mark notified up-front so a concurrent publish can't double-send, even
-        # if there are no recipients yet.
-        content.followers_notified = True
-        content.save(update_fields=["followers_notified"])
 
         if not recipients:
             return 0

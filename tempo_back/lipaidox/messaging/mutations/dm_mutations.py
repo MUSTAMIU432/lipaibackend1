@@ -74,14 +74,49 @@ class DmMutations:
             (Q(fan=fan, creator=creator) | Q(fan=creator, creator=fan))
         ).first()
         if conv is None:
+            # A first message from someone the recipient doesn't follow lands
+            # as a request (Instagram/X's DM-request inbox) rather than the
+            # main list, until the recipient accepts or replies.
+            from lipaidox.creator_profile.models.follow import Follow
+            recipient_is_fan = fan.id != user.id
+            recipient = fan if recipient_is_fan else creator
+            is_request = not Follow.objects.filter(follower=recipient, followed=user).exists()
             conv = Conversation.objects.create(
                 fan=fan, creator=creator,
                 tenant=getattr(user, "tenant", None),
                 conversation_type=ConversationType.FAN_TO_CREATOR,
+                request_pending_for_fan=(is_request and recipient_is_fan),
+                request_pending_for_creator=(is_request and not recipient_is_fan),
             )
         if text:
             _create_message(conv, user, body=text)
         return DmConversationType.from_model(conv, user)
+
+    @strawberry.mutation
+    def accept_dm_conversation(
+        self, info, conversation_id: strawberry.ID
+    ) -> DmConversationType:
+        """Moves a message request into the main inbox for the current user."""
+        user = require_auth(info)
+        conv = _get_conversation(user, conversation_id)
+        conv.accept_request_for(user)
+        return DmConversationType.from_model(conv, user)
+
+    @strawberry.mutation
+    def decline_dm_conversation(
+        self, info, conversation_id: strawberry.ID
+    ) -> bool:
+        """Removes a message request from the current user's view without
+        blocking the sender — same as Instagram/X's "Delete" on a request."""
+        user = require_auth(info)
+        conv = _get_conversation(user, conversation_id)
+        conv.accept_request_for(user)
+        if side_of(conv, user) == 'fan':
+            conv.hidden_by_fan = True
+        else:
+            conv.hidden_by_creator = True
+        conv.save()
+        return True
 
     @strawberry.mutation
     def mark_dm_conversation_read(
@@ -420,6 +455,9 @@ def _create_message(conv, sender, body="", images=None, voice_note=None,
     # increment unread for the recipient side
     recipient_side = 'creator' if conv.fan_id == sender.id else 'fan'
     conv.increment_unread_count(recipient_side)
+    # Sending is itself acceptance — a reply to a pending request takes it out
+    # of the sender's own Requests view, exactly like the recipient's did.
+    conv.accept_request_for(sender)
     return msg
 
 

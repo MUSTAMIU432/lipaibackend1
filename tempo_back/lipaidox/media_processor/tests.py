@@ -222,3 +222,39 @@ class DestroyTests(SimpleTestCase):
         with patch("cloudinary.uploader.destroy") as destroy:
             self.assertFalse(svc.destroy_by_url("/media/content/7/old.jpg"))
         destroy.assert_not_called()
+
+
+class TrimTests(SimpleTestCase):
+    URL = "https://res.cloudinary.com/test-cloud/video/upload/v1/lipaidox/content/7/clip.mp4"
+
+    def test_transformation_segments_are_not_part_of_the_public_id(self):
+        derived = "https://res.cloudinary.com/test-cloud/video/upload/eo_20.0,so_5.0/v1/lipaidox/content/7/clip.mp4"
+        self.assertEqual(svc.parse_cloudinary_url(derived), ("lipaidox/content/7/clip", "video"))
+
+    @override_settings(**CLOUDINARY_ON)
+    def test_trim_asks_cloudinary_for_the_range_and_returns_the_rendition(self):
+        payload = {"eager": [{"secure_url": "https://res.cloudinary.com/test-cloud/video/upload/eo_20.0,so_5.0/v1/lipaidox/content/7/clip.mp4", "bytes": 4242}]}
+        with patch("cloudinary.uploader.explicit", return_value=payload) as ex:
+            out = svc.trim_video(self.URL, 5, 20)
+        args, kwargs = ex.call_args
+        self.assertEqual(args[0], "lipaidox/content/7/clip")
+        self.assertEqual(kwargs["resource_type"], "video")
+        self.assertEqual(kwargs["eager"], [{"start_offset": 5, "end_offset": 20}])
+        self.assertFalse(kwargs["eager_async"])
+        self.assertEqual((out.bytes, out.duration_seconds), (4242, 15))
+        self.assertIn("so_5.0", out.secure_url)
+
+    @override_settings(**CLOUDINARY_ON)
+    def test_trim_rejects_bad_ranges_and_non_video(self):
+        with patch("cloudinary.uploader.explicit") as ex:
+            with self.assertRaises(svc.CloudinaryUploadError):
+                svc.trim_video(self.URL, 20, 5)
+            with self.assertRaises(svc.CloudinaryUploadError):
+                svc.trim_video("https://res.cloudinary.com/test-cloud/image/upload/v1/a/b.jpg", 1, 2)
+            ex.assert_not_called()
+
+    @override_settings(**CLOUDINARY_ON)
+    def test_trim_failure_becomes_application_error(self):
+        with patch("cloudinary.uploader.explicit", side_effect=RuntimeError("boom")):
+            with self.assertRaises(svc.CloudinaryUploadError):
+                svc.trim_video(self.URL, 1, 5)

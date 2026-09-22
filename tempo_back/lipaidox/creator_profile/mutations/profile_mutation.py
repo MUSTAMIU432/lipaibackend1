@@ -116,16 +116,24 @@ class ProfileMutation:
             if input.timezone is not None:
                 profile.timezone = input.timezone
 
+            def _normalize_handle(raw: str, domain_prefix: str) -> str:
+                """Bare handle (@user or user) → full profile URL; a pasted URL passes through."""
+                raw = raw.strip()
+                if not raw:
+                    return ""
+                if raw.startswith("http"):
+                    return raw[:255]
+                handle = raw.lstrip("@")
+                return f"{domain_prefix}{handle}/"[:255]
+
             if input.socialInstagram is not None:
-                raw = input.socialInstagram.strip()
-                if raw:
-                    # Normalize bare handle (@user or user) to full URL
-                    if not raw.startswith("http"):
-                        handle = raw.lstrip("@")
-                        raw = f"https://www.instagram.com/{handle}/"
-                    profile.social_instagram = raw[:255]
-                else:
-                    profile.social_instagram = None
+                profile.social_instagram = _normalize_handle(input.socialInstagram, "https://www.instagram.com/") or None
+            if input.socialTwitter is not None:
+                profile.social_twitter = _normalize_handle(input.socialTwitter, "https://x.com/") or None
+            if input.socialTiktok is not None:
+                profile.social_tiktok = _normalize_handle(input.socialTiktok, "https://www.tiktok.com/@") or None
+            if input.socialYoutube is not None:
+                profile.social_youtube = _normalize_handle(input.socialYoutube, "https://www.youtube.com/@") or None
 
             profile.save()
         return CreatorProfileType.from_model(profile)

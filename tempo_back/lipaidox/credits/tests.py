@@ -341,6 +341,29 @@ class ApiTests(TestCase):
         lb.start_billing(stream, now=self.t0)
         return stream
 
+    # ── packages: a fresh database can still sell credits ────────────────────
+
+    def test_packages_seed_themselves_only_when_none_exist(self):
+        q = 'query{ creditPackages(creditType:"creator_credit"){ name totalCredits priceUsd } }'
+        # Packs exist already (setUp) → nothing is added.
+        data, errs = gql(self.user, q)
+        self.assertEqual(errs, [])
+        self.assertEqual({p["name"] for p in data["creditPackages"]}, {"Starter", "Pro"})
+
+        # Every pack switched off by an admin → still nothing is resurrected.
+        CreditPackage.objects.update(is_active=False)
+        data, _ = gql(self.user, q)
+        self.assertEqual(data["creditPackages"], [])
+        self.assertEqual(CreditPackage.objects.count(), 2)
+
+        # A database with none at all gets the four standard packs, once.
+        CreditPackage.objects.all().delete()
+        data, _ = gql(self.user, q)
+        self.assertEqual([p["name"] for p in data["creditPackages"]], ["Starter", "Standard", "Pro", "Premium"])
+        self.assertEqual([float(p["totalCredits"]) for p in data["creditPackages"]], [100, 500, 1000, 2500])
+        gql(self.user, q)
+        self.assertEqual(CreditPackage.objects.count(), 4)
+
     # ── transactions: pagination, filter, ownership ──────────────────────────
 
     def test_transactions_paginate_filter_and_lookup(self):

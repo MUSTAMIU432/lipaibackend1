@@ -1,4 +1,4 @@
-from .profile import CreatorProfile, ProfileStatus, CreatorTier
+from .profile import CreatorProfile, ProfileStatus, CreatorTier, AccountKind
 from .username_history import UsernameHistory, reserve_username, release_username, is_username_available
 from .follow import Follow
 from .membership import MembershipSubscription, MembershipStatus, NotificationPreference
@@ -8,6 +8,7 @@ __all__ = [
     "CreatorProfile",
     "ProfileStatus",
     "CreatorTier",
+    "AccountKind",
     "UsernameHistory",
     "reserve_username",
     "release_username",

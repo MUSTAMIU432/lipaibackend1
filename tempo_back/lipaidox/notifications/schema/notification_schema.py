@@ -12,47 +12,90 @@ from ..models import (
 )
 
 
+def _sender_avatar(sender) -> Optional[str]:
+    if sender is None:
+        return None
+    try:
+        return getattr(sender.profile, "profile_photo_url", None)
+    except Exception:
+        return None
+
+
+def _sender_display_name(sender) -> Optional[str]:
+    if sender is None:
+        return None
+    full = (sender.get_full_name() or "").strip()
+    return full or sender.username
+
+
+def _entity_thumbnail(entity_type: Optional[str], entity_id) -> Optional[str]:
+    """Best-effort cover image for the notification's target — the row the
+    mobile client shows on the right of the notification, mirroring the feed
+    card's own thumbnail. Only content posts have one today."""
+    kind = (entity_type or "").lower()
+    if not entity_id or ("content" not in kind and "post" not in kind):
+        return None
+    try:
+        from lipaidox.content.models import ContentMedia
+        rows = list(ContentMedia.objects.filter(content_id=entity_id).order_by("sort_order"))
+        if not rows:
+            return None
+        # An explicit thumbnail row wins; otherwise fall back to the first
+        # file's own thumbnail (a video's poster frame) or the file itself.
+        thumb_row = next((r for r in rows if r.media_role == "thumbnail"), rows[0])
+        return thumb_row.thumbnail_url or thumb_row.file_url
+    except Exception:
+        return None
+
+
 # Notification Types
 @strawberry.type
 class NotificationType:
     id: strawberry.ID
     recipientId: strawberry.ID
     senderId: Optional[strawberry.ID]
-    
+    senderAvatar: Optional[str]
+    senderDisplayName: Optional[str]
+
     # Content
     title: str
     message: str
     notificationType: str
     priority: str
-    
+
     # Metadata
     entityType: Optional[str]
     entityId: Optional[strawberry.ID]
+    thumbnailUrl: Optional[str]
     actionUrl: Optional[str]
     actionText: Optional[str]
     metadata: JSON
-    
+
     # Status
     isRead: bool
     readAt: Optional[datetime]
     expiresAt: Optional[datetime]
-    
+
     # Timestamps
     createdAt: datetime
     updatedAt: datetime
 
     @classmethod
     def from_model(cls, instance: Notification):
+        sender = getattr(instance, "sender", None)
         return cls(
             id=strawberry.ID(str(instance.id)),
             recipientId=strawberry.ID(str(instance.recipient_id)),
             senderId=strawberry.ID(str(instance.sender_id)) if instance.sender_id else None,
+            senderAvatar=_sender_avatar(sender),
+            senderDisplayName=_sender_display_name(sender),
             title=instance.title,
             message=instance.message,
             notificationType=instance.notification_type,
             priority=instance.priority,
             entityType=instance.entity_type,
             entityId=strawberry.ID(str(instance.entity_id)) if instance.entity_id else None,
+            thumbnailUrl=_entity_thumbnail(instance.entity_type, instance.entity_id),
             actionUrl=instance.action_url,
             actionText=instance.action_text,
             metadata=instance.metadata,

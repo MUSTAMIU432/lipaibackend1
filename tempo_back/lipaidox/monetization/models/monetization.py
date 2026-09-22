@@ -36,7 +36,11 @@ class MonetizationSettings(TenantAwareModel):
     subscription_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     subscription_billing_cycle = models.CharField(max_length=20, choices=SubscriptionBillingCycle.choices, default=SubscriptionBillingCycle.MONTHLY)
     subscription_trial_days = models.IntegerField(default=0)
-    subscription_description = models.TextField(null=True, blank=True)
+    subscription_description = models.TextField(max_length=150, null=True, blank=True)
+    # Stable keys from the setup wizard's "Choose Benefits" checklist
+    # (e.g. "exclusive_posts", "subscriber_badge") — display copy for each
+    # lives in the client, same as `content_categories` on CreatorProfile.
+    subscription_benefits = models.JSONField(default=list, blank=True)
 
     # Pay Per View
     ppv_enabled = models.BooleanField(default=False)

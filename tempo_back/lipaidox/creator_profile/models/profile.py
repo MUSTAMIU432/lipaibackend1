@@ -16,6 +16,12 @@ class CreatorTier(models.TextChoices):
     GOLD = 'gold', 'Gold'
     PLATINUM = 'platinum', 'Platinum'
 
+class AccountKind(models.TextChoices):
+    """Chosen on the "Switch to Creator" wizard's first real step — Creator
+    (an individual: artist, public figure) vs Business (a brand, org, shop)."""
+    CREATOR = 'creator', 'Creator'
+    BUSINESS = 'business', 'Business'
+
 class CreatorProfile(TenantAwareModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField("lipaidox_auth.User", on_delete=models.CASCADE, related_name="profile")
@@ -66,6 +72,25 @@ class CreatorProfile(TenantAwareModel):
     # Fan community
     fan_club_name = models.CharField(max_length=150, null=True, blank=True)
     welcome_message = models.TextField(null=True, blank=True)
+
+    # ── Business account (the "Switch to Creator" wizard's Business path) ──
+    # `account_kind` is the choice on the wizard's second screen; the fields
+    # below only apply when it's `business` and are otherwise left blank.
+    account_kind = models.CharField(max_length=10, choices=AccountKind.choices, default=AccountKind.CREATOR)
+    business_category = models.CharField(max_length=100, null=True, blank=True)
+    show_category_on_profile = models.BooleanField(default=True)
+    business_name = models.CharField(max_length=255, null=True, blank=True)
+    business_email = models.EmailField(max_length=255, null=True, blank=True)
+    business_phone = models.CharField(max_length=30, null=True, blank=True)
+    business_address = models.TextField(null=True, blank=True)
+    business_website = models.URLField(max_length=500, null=True, blank=True)
+    # Which contact methods show on the public profile — the wizard's
+    # "Choose Your Contact Options" step. Directions defaults off since it
+    # needs a real address to mean anything; the rest default on.
+    contact_show_email = models.BooleanField(default=True)
+    contact_show_phone = models.BooleanField(default=True)
+    contact_show_whatsapp = models.BooleanField(default=True)
+    contact_show_directions = models.BooleanField(default=False)
 
     # Counters
     follower_count = models.IntegerField(default=0)

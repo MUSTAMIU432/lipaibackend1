@@ -38,7 +38,14 @@ class AuthTokenType:
 
 @strawberry.type
 class AuthPayload:
-    """Returned on register or login — user profile + tokens so the frontend can proceed immediately."""
+    """Returned on register or login — user profile + tokens so the frontend can proceed immediately.
+
+    When the account has 2FA enabled, `loginUser` returns this with
+    `requires_two_factor=True`, `challenge_token` set, and every token
+    field blank rather than real credentials — nothing usable to
+    authenticate with until `completeTwoFactorLogin` exchanges the
+    challenge + a correct code for a second, real `AuthPayload`.
+    """
     access_token: str
     refresh_token: str
     token_type: str
@@ -49,3 +56,5 @@ class AuthPayload:
     role: str
     first_name: str = ""
     last_name: str = ""
+    requires_two_factor: bool = False
+    challenge_token: Optional[str] = None

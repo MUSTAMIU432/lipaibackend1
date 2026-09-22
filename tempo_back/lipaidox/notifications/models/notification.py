@@ -225,7 +225,7 @@ class Notification(TenantAwareModel):
             models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=timezone.now())
         )
         
-        return queryset.order_by('-priority', '-created_at')[:limit]
+        return queryset.select_related('sender', 'sender__profile').order_by('-priority', '-created_at')[:limit]
 
     @classmethod
     def get_unread_count(cls, user):

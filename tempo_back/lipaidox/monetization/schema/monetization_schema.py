@@ -9,6 +9,8 @@ class MonetizationSettingsType:
     subscriptionEnabled: bool
     subscriptionPrice: Optional[float]
     subscriptionBillingCycle: str
+    subscriptionDescription: Optional[str]
+    subscriptionBenefits: List[str]
     ppvEnabled: bool
     ppvPrice: Optional[float]
     tipsEnabled: bool
@@ -25,6 +27,8 @@ class MonetizationSettingsType:
             subscriptionEnabled=instance.subscription_enabled,
             subscriptionPrice=float(instance.subscription_price) if instance.subscription_price else None,
             subscriptionBillingCycle=instance.subscription_billing_cycle,
+            subscriptionDescription=instance.subscription_description,
+            subscriptionBenefits=list(instance.subscription_benefits or []),
             ppvEnabled=instance.ppv_enabled,
             ppvPrice=float(instance.ppv_price) if instance.ppv_price else None,
             tipsEnabled=instance.tips_enabled,
@@ -40,6 +44,8 @@ class MonetizationUpdateInput:
     subscriptionEnabled: Optional[bool] = None
     subscriptionPrice: Optional[float] = None
     subscriptionBillingCycle: Optional[str] = None
+    subscriptionDescription: Optional[str] = None
+    subscriptionBenefits: Optional[List[str]] = None
     ppvEnabled: Optional[bool] = None
     ppvPrice: Optional[float] = None
     tipsEnabled: Optional[bool] = None

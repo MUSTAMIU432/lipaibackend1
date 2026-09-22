@@ -213,6 +213,7 @@ class DmConversationType:
     status: str
     isBlocked: bool
     blockedByMe: bool
+    isRequest: bool
 
     @classmethod
     def from_model(cls, c: Conversation, user) -> "DmConversationType":
@@ -239,6 +240,7 @@ class DmConversationType:
             status=c.status,
             isBlocked=(c.status == "blocked"),
             blockedByMe=(c.status == "blocked" and c.blocked_by_id == user.id),
+            isRequest=c.is_request_for(user),
         )
 
 

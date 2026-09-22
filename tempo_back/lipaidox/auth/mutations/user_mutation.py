@@ -1,4 +1,5 @@
 import re
+import secrets
 import uuid
 
 import strawberry
@@ -10,7 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from ..models import User, RefreshToken
-from ..schema.user_schema import UserType, UserInput, UserUpdateInput, UserSelfUpdateInput
+from ..schema.user_schema import UserType, UserInput, UserUpdateInput, UserSelfUpdateInput, BecomeCreatorInput
 from ..schema.token_schema import AuthPayload, AuthTokenType
 from ..jwt_auth import (
     generate_access_token,
@@ -34,10 +35,42 @@ from lipaidox.auth.user_eligibility import (
     find_user_by_email_tenant,
 )
 from lipaidox.creator_profile.models import (
+    AccountKind,
     CreatorProfile,
     is_username_available,
     reserve_username,
 )
+
+
+def _apply_become_creator_input(profile: CreatorProfile, input: BecomeCreatorInput) -> None:
+    """Copies the "Switch to Creator" wizard's answers onto the profile.
+    Every field is optional — only what the caller actually sent gets
+    touched, so a partial submission never blanks out the rest."""
+    fields = []
+
+    def _set(attr, value):
+        if value is None:
+            return
+        setattr(profile, attr, value)
+        fields.append(attr)
+
+    kind = (input.accountKind or "").strip().lower()
+    if kind in (AccountKind.CREATOR, AccountKind.BUSINESS):
+        _set("account_kind", kind)
+    _set("business_category", (input.category or "").strip() or None)
+    _set("show_category_on_profile", input.showCategoryOnProfile)
+    _set("business_name", (input.businessName or "").strip() or None)
+    _set("business_email", (input.businessEmail or "").strip() or None)
+    _set("business_phone", (input.businessPhone or "").strip() or None)
+    _set("business_address", (input.businessAddress or "").strip() or None)
+    _set("business_website", (input.businessWebsite or "").strip() or None)
+    _set("contact_show_email", input.contactShowEmail)
+    _set("contact_show_phone", input.contactShowPhone)
+    _set("contact_show_whatsapp", input.contactShowWhatsapp)
+    _set("contact_show_directions", input.contactShowDirections)
+
+    if fields:
+        profile.save(update_fields=fields)
 
 
 def _issue_auth_payload(info: strawberry.types.Info, user: User) -> AuthPayload:
@@ -139,6 +172,27 @@ class UserMutation:
             raise Exception("Invalid username or password.")
         if user.tenant != tenant:
             raise Exception("User does not belong to this tenant.")
+
+        from ..models import TwoFactorAuth, TwoFactorLoginChallenge
+        if TwoFactorAuth.objects.filter(user=user, enabled=True).exists():
+            # Password checked out, but the account has a second factor —
+            # hand back a challenge instead of real tokens. Nothing here
+            # authenticates anything by itself.
+            raw = secrets.token_urlsafe(32)
+            TwoFactorLoginChallenge.objects.create(user=user, token_hash=hash_token(raw))
+            return AuthPayload(
+                access_token="",
+                refresh_token="",
+                token_type="Bearer",
+                expires_in=0,
+                user_id=strawberry.ID(str(user.id)),
+                username=user.username,
+                email=user.email,
+                role=user.role,
+                requires_two_factor=True,
+                challenge_token=raw,
+            )
+
         payload = _issue_auth_payload(info, user)
         if user.is_first_login:
             User.objects.filter(pk=user.pk).update(is_first_login=False)
@@ -212,6 +266,19 @@ class UserMutation:
         token_hash = hash_token(refresh_token)
         RefreshToken.objects.filter(token_hash=token_hash).update(status="revoked")
         return True
+
+    @strawberry.mutation
+    def revoke_session(self, info: strawberry.types.Info, session_id: strawberry.ID) -> bool:
+        """Ends one of the caller's OWN other sessions — the Account Security
+        screen's "Log out" on a listed device. Unlike `logoutUser`, this
+        revokes by the session's id rather than its raw refresh token, since
+        the client only ever holds the raw token for the device it's running
+        on, not for the other sessions it's showing the user."""
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required.")
+        updated = RefreshToken.objects.filter(id=session_id, user=user, status="active").update(status="revoked")
+        return updated > 0
 
     @strawberry.mutation
     def google_auth(
@@ -501,11 +568,17 @@ class UserMutation:
         return UserType.from_model(user)
 
     @strawberry.mutation
-    def upgrade_account_to_creator(self, info: strawberry.types.Info) -> UserType:
+    def upgrade_account_to_creator(
+        self, info: strawberry.types.Info, input: Optional[BecomeCreatorInput] = None
+    ) -> UserType:
         """
         Authenticated viewer (fan) may switch to creator to unlock uploads and creator APIs.
 
         Ensures a ``CreatorProfile`` row exists (using the account username when available).
+        `input` carries the "Switch to Creator" wizard's answers — account kind
+        (Creator vs Business), category, business info and contact-visibility
+        toggles — when the caller went through it; the plain one-tap upgrade
+        (no wizard) omits it and gets the same bare profile as before.
         """
         user = info.context.request.user
         if not user.is_authenticated:
@@ -524,7 +597,8 @@ class UserMutation:
             user.role = UserRoles.CREATOR
             user.save(update_fields=["role"])
 
-            if not CreatorProfile.objects.filter(user=user).exists():
+            profile = CreatorProfile.objects.filter(user=user).first()
+            if profile is None:
                 candidate = (user.username or "").strip()
                 if not candidate:
                     raise Exception(
@@ -536,13 +610,16 @@ class UserMutation:
                         "That username is already used by another creator profile. "
                         "Change your account username, then try again."
                     )
-                CreatorProfile.objects.create(
+                profile = CreatorProfile.objects.create(
                     user=user,
                     tenant=tenant,
                     username=candidate,
                     bio="",
                 )
                 reserve_username(candidate, user, tenant)
+
+            if input is not None:
+                _apply_become_creator_input(profile, input)
 
         return UserType.from_model(user)
 

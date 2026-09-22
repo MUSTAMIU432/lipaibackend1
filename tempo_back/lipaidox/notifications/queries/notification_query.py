@@ -61,13 +61,15 @@ class NotificationQuery:
             unread_only=unread_only,
             limit=limit
         )
-        
-        # Apply additional filters
+
+        # Apply additional filters — note `get_user_notifications` already
+        # sliced with `[:limit]`, so these run in Python, not SQL: a sliced
+        # queryset can't be filtered further (Django raises on it).
         if filter:
             if filter.notificationType:
-                notifications = notifications.filter(notification_type=filter.notificationType)
+                notifications = [n for n in notifications if n.notification_type == filter.notificationType]
             if filter.priority:
-                notifications = notifications.filter(priority=filter.priority)
+                notifications = [n for n in notifications if n.priority == filter.priority]
         
         return [NotificationGraphQLType.from_model(notification) for notification in notifications]
 

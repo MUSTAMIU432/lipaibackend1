@@ -15,7 +15,7 @@ PY=./myenv/bin/python
 # Suites that need no database (fakes and mocks only).
 FAST=(lipaidox.creator_plans.tests lipaidox.payment.tests lipaidox.media_processor.tests)
 # Suites that need the real schema.
-DB=(lipaidox.credits.tests lipaidox.feedback.tests)
+DB=(lipaidox.credits.tests lipaidox.feedback.tests lipaidox.content.tests)
 
 mode="${1:-all}"
 case "$mode" in quick|db|all) shift || true ;; *) mode=all ;; esac

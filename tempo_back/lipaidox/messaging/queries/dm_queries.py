@@ -42,6 +42,11 @@ class DmQueries:
                 ~(Q(fan=user) & Q(hidden_by_fan=True)),
                 ~(Q(creator=user) & Q(hidden_by_creator=True)),
             )
+            # pending message requests live in `dm_message_requests`, not the main inbox
+            qs = qs.filter(
+                ~(Q(fan=user) & Q(request_pending_for_fan=True)),
+                ~(Q(creator=user) & Q(request_pending_for_creator=True)),
+            )
         qs = qs.select_related("fan", "creator").order_by("-last_message_at")
         convos = list(qs)
         # pinned first (per-side)
@@ -49,6 +54,23 @@ class DmQueries:
             return c.pinned_by_fan if c.fan_id == user.id else c.pinned_by_creator
         convos.sort(key=lambda c: (not is_pinned(c)))
         return [DmConversationType.from_model(c, user) for c in convos]
+
+    @strawberry.field
+    def dm_message_requests(self, info) -> List[DmConversationType]:
+        """Conversations started by someone the viewer doesn't follow, pending
+        their accept/decline — Instagram/X's DM-requests inbox."""
+        user = get_user(info)
+        if user is None:
+            return []
+        qs = Conversation.objects.filter(
+            Q(fan=user, request_pending_for_fan=True)
+            | Q(creator=user, request_pending_for_creator=True)
+        ).exclude(status="deleted").filter(
+            ~(Q(fan=user) & Q(hidden_by_fan=True)),
+            ~(Q(creator=user) & Q(hidden_by_creator=True)),
+        )
+        qs = qs.select_related("fan", "creator").order_by("-last_message_at")
+        return [DmConversationType.from_model(c, user) for c in qs]
 
     @strawberry.field
     def dm_conversation(

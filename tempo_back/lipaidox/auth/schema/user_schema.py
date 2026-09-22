@@ -80,3 +80,21 @@ class UserSelfUpdateInput:
     phone_number: Optional[str] = None
     phone_country_code: Optional[str] = None
     date_of_birth: Optional[date] = None
+
+@strawberry.input
+class BecomeCreatorInput:
+    """The "Switch to Creator" wizard's collected answers, carried in one
+    call rather than several partial-update round trips. Every field is
+    optional so the plain one-tap upgrade (no wizard) still works."""
+    accountKind: Optional[str] = None  # "creator" | "business"
+    category: Optional[str] = None
+    showCategoryOnProfile: Optional[bool] = None
+    businessName: Optional[str] = None
+    businessEmail: Optional[str] = None
+    businessPhone: Optional[str] = None
+    businessAddress: Optional[str] = None
+    businessWebsite: Optional[str] = None
+    contactShowEmail: Optional[bool] = None
+    contactShowPhone: Optional[bool] = None
+    contactShowWhatsapp: Optional[bool] = None
+    contactShowDirections: Optional[bool] = None
