@@ -28,6 +28,10 @@ class CreatorProfile(TenantAwareModel):
     
     # Public identity
     username = models.CharField(max_length=50, unique=True)
+    # Set whenever `username` actually changes — the "Change username" screen's
+    # 30-day cooldown reads this rather than just showing the copy and not
+    # enforcing it.
+    username_changed_at = models.DateTimeField(null=True, blank=True)
     bio = models.TextField(max_length=1000, null=True, blank=True)
     profile_photo_url = models.URLField(max_length=500, null=True, blank=True)
     cover_photo_url = models.URLField(max_length=500, null=True, blank=True)

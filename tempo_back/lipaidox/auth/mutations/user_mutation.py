@@ -268,6 +268,25 @@ class UserMutation:
         return True
 
     @strawberry.mutation
+    def revoke_other_sessions(self, info: strawberry.types.Info, refresh_token: str) -> int:
+        """Ends every one of the caller's active sessions EXCEPT the one
+        making this call — the Account Security screen's "Log out all other
+        devices". The current device is identified by hashing its own raw
+        refresh token (the same value `logoutUser` takes), not by a
+        client-supplied id, so a device can't accidentally exclude a
+        different one. Returns how many were revoked."""
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required.")
+        current_hash = hash_token(refresh_token)
+        updated = (
+            RefreshToken.objects.filter(user=user, status="active")
+            .exclude(token_hash=current_hash)
+            .update(status="revoked")
+        )
+        return updated
+
+    @strawberry.mutation
     def revoke_session(self, info: strawberry.types.Info, session_id: strawberry.ID) -> bool:
         """Ends one of the caller's OWN other sessions — the Account Security
         screen's "Log out" on a listed device. Unlike `logoutUser`, this

@@ -8,6 +8,7 @@ class CreatorProfileType:
     id: strawberry.ID
     userId: strawberry.ID
     username: str
+    usernameChangedAt: Optional[datetime]
     bio: Optional[str]
     profilePhotoUrl: Optional[str]
     coverPhotoUrl: Optional[str]
@@ -72,6 +73,7 @@ class CreatorProfileType:
             id=strawberry.ID(str(instance.id)),
             userId=strawberry.ID(str(instance.user_id)),
             username=instance.username,
+            usernameChangedAt=instance.username_changed_at,
             bio=instance.bio,
             profilePhotoUrl=instance.profile_photo_url,
             coverPhotoUrl=instance.cover_photo_url,

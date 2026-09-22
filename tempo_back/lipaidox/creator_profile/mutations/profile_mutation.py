@@ -1,8 +1,12 @@
 import strawberry
+from datetime import timedelta
 from django.db import transaction
+from django.utils import timezone
 from ..models import CreatorProfile, is_username_available, reserve_username, release_username
 from ..schema.profile_schema import CreatorProfileType, CreateProfileInput, UpdateProfileInput
 from lipaidox.auth.permissions import UserRoles
+
+USERNAME_COOLDOWN = timedelta(days=30)
 
 @strawberry.type
 class ProfileMutation:
@@ -70,19 +74,28 @@ class ProfileMutation:
         with transaction.atomic():
             # Handle username change with recycling
             if input.username and input.username != profile.username:
+                if profile.username_changed_at is not None:
+                    earliest = profile.username_changed_at + USERNAME_COOLDOWN
+                    if timezone.now() < earliest:
+                        raise Exception(
+                            f"You can only change your username once every 30 days. "
+                            f"Try again after {earliest.date().isoformat()}."
+                        )
+
                 # Check if new username is available
                 if not is_username_available(input.username, tenant, exclude_user=user):
                     raise Exception("Username already taken in this platform.")
-                
+
                 # Release old username back to available pool
                 old_username = profile.username
                 release_username(old_username, tenant)
-                
+
                 # Reserve new username
                 reserve_username(input.username, user, tenant)
-                
+
                 # Update profile
                 profile.username = input.username
+                profile.username_changed_at = timezone.now()
             
             if input.bio is not None:
                 profile.bio = input.bio
