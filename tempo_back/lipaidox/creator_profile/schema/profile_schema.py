@@ -46,6 +46,13 @@ class CreatorProfileType:
     # hasn't priced/enabled subscriptions.
     subscriptionPrice: Optional[float] = None
     subscriptionEnabled: bool = False
+    # What the subscribe checkout actually shows a fan before they pay — the
+    # same fields the creator sets on the Subscriptions setup wizard
+    # (`settings/subscription-setup.tsx`), otherwise only readable via
+    # `myMonetizationSettings`, which is self-only.
+    subscriptionBillingCycle: str = "monthly"
+    subscriptionDescription: Optional[str] = None
+    subscriptionBenefits: List[str] = strawberry.field(default_factory=list)
     # Set on the "Switch to Creator" wizard's Business path; a plain Creator
     # account leaves everything below unset.
     accountKind: str = "creator"
@@ -76,12 +83,18 @@ class CreatorProfileType:
 
         sub_price = None
         sub_enabled = False
+        sub_billing_cycle = "monthly"
+        sub_description = None
+        sub_benefits: list = []
         settings = getattr(instance, "monetization_settings", None)
         if settings is not None:
             sub_enabled = bool(getattr(settings, "subscription_enabled", False))
             raw = getattr(settings, "subscription_price", None)
             if raw is not None:
                 sub_price = float(raw)
+            sub_billing_cycle = getattr(settings, "subscription_billing_cycle", None) or "monthly"
+            sub_description = getattr(settings, "subscription_description", None)
+            sub_benefits = list(getattr(settings, "subscription_benefits", None) or [])
 
         gender_visible = for_owner or instance.show_gender_on_profile
         birthday_visible = for_owner or instance.show_birthday_on_profile
@@ -125,6 +138,9 @@ class CreatorProfileType:
             createdAt=instance.created_at,
             subscriptionPrice=sub_price,
             subscriptionEnabled=sub_enabled,
+            subscriptionBillingCycle=sub_billing_cycle,
+            subscriptionDescription=sub_description,
+            subscriptionBenefits=sub_benefits,
             accountKind=instance.account_kind,
             businessCategory=instance.business_category,
             showCategoryOnProfile=instance.show_category_on_profile,
