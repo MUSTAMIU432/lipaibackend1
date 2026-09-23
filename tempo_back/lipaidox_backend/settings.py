@@ -118,6 +118,7 @@ INSTALLED_APPS = [
     "strawberry_django",
     "rest_framework",
     "corsheaders",
+    "anymail",
 
     # Multi-tenancy middleware app
     "multitenant",
@@ -469,13 +470,28 @@ WHATSAPP_WEBHOOK_TOKEN = config("WHATSAPP_WEBHOOK_TOKEN", default="")
 GOOGLE_TRANSLATE_API_KEY = config("GOOGLE_TRANSLATE_API_KEY", default="")
 
 # -----------------------------
-# Email (SMTP) — read from `.env` next to `manage.py` (python-decouple `config()`).
+# Email — read from `.env` next to `manage.py` (python-decouple `config()`).
 # -----------------------------
-# Password-reset **OTP** (`requestPasswordReset` → `send_password_reset_otp_email`) uses
-# Django `send_mail`. Fill the gaps below in `.env` for real delivery.
+# Password-reset **OTP** (`requestPasswordReset` → `send_password_reset_otp_email`) and
+# email-verification OTP both go through Django `send_mail`, so everything below is
+# just picking which `EMAIL_BACKEND` actually delivers it — the call sites in
+# `auth/email_outbound.py` never change.
+#
+# Three backends, picked in this order:
+#   1. RESEND_API_KEY set  → Anymail's Resend backend (HTTPS API, port 443).
+#      Render (and several other PaaS hosts) blocks outbound SMTP ports
+#      (25/587/465) on standard web services to stop spam abuse — real SMTP
+#      credentials there just hang until EMAIL_TIMEOUT and fail, every time,
+#      regardless of how correct the credentials are. An HTTPS-API provider
+#      sidesteps that entirely. Get a key at resend.com (free tier).
+#   2. EMAIL_HOST set       → real SMTP (fine locally / on hosts that allow it).
+#   3. neither set          → `console` backend: OTP still runs, body prints
+#      in the runserver terminal (local dev only).
 #
 # | Variable                 | You fill in…                                      |
 # |--------------------------|---------------------------------------------------|
+# | RESEND_API_KEY           | From resend.com — preferred on Render              |
+# | RESEND_FROM_DOMAIN_VERIFIED | True once your sending domain is verified there |
 # | EMAIL_HOST               | SMTP host (e.g. smtp.sendgrid.net)                |
 # | EMAIL_PORT               | Usually 587 (TLS) or 465 (SSL)                    |
 # | EMAIL_USE_TLS / _SSL     | Match your provider                               |
@@ -486,11 +502,10 @@ GOOGLE_TRANSLATE_API_KEY = config("GOOGLE_TRANSLATE_API_KEY", default="")
 # | EMAIL_TIMEOUT            | Seconds (default 30)                              |
 # | EMAIL_BACKEND            | Optional override (rare; leave empty for auto)   |
 #
-# If **EMAIL_HOST** is left empty → `console` email backend: OTP still runs, body prints
-# in the **runserver terminal** (good for local GraphQL + Next `/forgot-password` tests).
-#
 # Also set **FRONTEND_ORIGIN** and **PASSWORD_RESET_FRONTEND_PATH** above for *link* reset;
-# OTP emails only need a valid From + SMTP (or console).
+# OTP emails only need a valid From + a working backend.
+RESEND_API_KEY = (config("RESEND_API_KEY", default="") or "").strip()
+
 EMAIL_HOST = (config("EMAIL_HOST", default="") or "").strip()
 EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
@@ -504,13 +519,25 @@ SERVER_EMAIL = (config("SERVER_EMAIL", default="") or "").strip()
 _email_backend_explicit = (config("EMAIL_BACKEND", default="") or "").strip()
 if _email_backend_explicit:
     EMAIL_BACKEND = _email_backend_explicit
+elif RESEND_API_KEY:
+    EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 elif EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
+ANYMAIL = {
+    "RESEND_API_KEY": RESEND_API_KEY,
+}
+
 if not DEFAULT_FROM_EMAIL and EMAIL_HOST_USER:
     DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# Resend's own shared testing domain — works with no domain verification, but
+# only actually delivers to the email the resend.com account was signed up
+# with. Once a real sending domain is verified on resend.com, set
+# DEFAULT_FROM_EMAIL to an address on it instead and this default backs off.
+if not DEFAULT_FROM_EMAIL and RESEND_API_KEY:
+    DEFAULT_FROM_EMAIL = "onboarding@resend.dev"
 if not SERVER_EMAIL:
     SERVER_EMAIL = DEFAULT_FROM_EMAIL or "root@localhost"
 

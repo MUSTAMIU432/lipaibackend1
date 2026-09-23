@@ -29,6 +29,7 @@ cryptography==41.0.7
 distro==1.9.0
 dj-database-url==3.1.2
 Django==4.2.7
+django-anymail[resend]==14.0
 django-celery-beat==2.5.0
 django-celery-results==2.5.0
 django-cors-headers==4.3.1
