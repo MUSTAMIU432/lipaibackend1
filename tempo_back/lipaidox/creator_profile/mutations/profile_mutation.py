@@ -36,17 +36,18 @@ class ProfileMutation:
             )
             # Reserve the username in history
             reserve_username(input.username, user, tenant)
-        return CreatorProfileType.from_model(profile)
+        return CreatorProfileType.from_model(profile, for_owner=True)
 
     @strawberry.mutation
     def update_profile(self, info: strawberry.types.Info, input: UpdateProfileInput) -> CreatorProfileType:
+        # Every authenticated account — fan or creator — has a profile row to
+        # edit (bio, photos, location, gender…) via the app's single "Edit
+        # profile" hub; the CreatorProfile row just doesn't exist yet for a
+        # fan until their first save, so it's materialized below rather than
+        # gated behind a creator-only role check the way `create_profile` is.
         user = info.context.request.user
         if not user.is_authenticated:
             raise Exception("Authentication required")
-        
-        # Check if user has creator role
-        if user.role != UserRoles.CREATOR:
-            raise Exception("Creator access required")
 
         tenant = user.tenant
 
@@ -54,13 +55,18 @@ class ProfileMutation:
             profile = CreatorProfile.objects.get(user=user)
         except CreatorProfile.DoesNotExist:
             # Onboarding / clients may call update_profile before create_profile; materialize the row once.
+            # This is also every fan's first save now that update_profile isn't
+            # creator-gated (see the note above), so `candidate` is almost
+            # always the account's own username — `exclude_user` keeps
+            # `is_username_available` from flagging a user's own name as
+            # "taken" by the `User` row it's reading it from.
             candidate = (input.username or user.username or "").strip()
             if not candidate:
                 raise Exception(
                     "No creator profile exists yet. Provide a username in your profile setup, "
                     "or call create_profile first."
                 )
-            if not is_username_available(candidate, tenant):
+            if not is_username_available(candidate, tenant, exclude_user=user):
                 raise Exception("Username already taken in this platform.")
             with transaction.atomic():
                 profile = CreatorProfile.objects.create(
@@ -113,6 +119,10 @@ class ProfileMutation:
                 profile.nationality = input.nationality
             if input.gender is not None:
                 profile.gender = input.gender
+            if input.showGenderOnProfile is not None:
+                profile.show_gender_on_profile = input.showGenderOnProfile
+            if input.showBirthdayOnProfile is not None:
+                profile.show_birthday_on_profile = input.showBirthdayOnProfile
             if input.areaOfInterest is not None:
                 profile.area_of_interest = input.areaOfInterest
             if input.contentCategories is not None:
@@ -149,7 +159,7 @@ class ProfileMutation:
                 profile.social_youtube = _normalize_handle(input.socialYoutube, "https://www.youtube.com/@") or None
 
             profile.save()
-        return CreatorProfileType.from_model(profile)
+        return CreatorProfileType.from_model(profile, for_owner=True)
 
     @strawberry.mutation
     def follow_user(self, info: strawberry.types.Info, user_id: strawberry.ID) -> bool:

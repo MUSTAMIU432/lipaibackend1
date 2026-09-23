@@ -50,7 +50,7 @@ class ProfileQuery:
             return None
         try:
             profile = CreatorProfile.objects.get(user=user)
-            return CreatorProfileType.from_model(profile)
+            return CreatorProfileType.from_model(profile, for_owner=True)
         except CreatorProfile.DoesNotExist:
             return None
 

@@ -46,6 +46,14 @@ class CreatorProfile(TenantAwareModel):
 
     # Gender
     gender = models.CharField(max_length=50, null=True, blank=True)
+    # Off by default — set at signup ("Show my gender on my profile") or later
+    # in settings. Gates whether `gender` is returned to anyone but the owner;
+    # see `CreatorProfileType.from_model`.
+    show_gender_on_profile = models.BooleanField(default=False)
+    # Gates the derived `birthday` field (month/day only — the year never
+    # leaves the account row) the same way. Signup's "...allow people to
+    # celebrate my birthday" checkbox.
+    show_birthday_on_profile = models.BooleanField(default=False)
 
     # Area(s) of interest — multiple values stored as "|||"-joined labels (see FRT encodeAreasOfInterest).
     area_of_interest = models.TextField(null=True, blank=True)

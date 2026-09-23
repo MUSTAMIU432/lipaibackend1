@@ -18,7 +18,14 @@ class CreatorProfileType:
     city: Optional[str]
     preferredLanguage: Optional[str]
     timezone: Optional[str]
+    # Gated by `showGenderOnProfile`/`showBirthdayOnProfile` for every viewer
+    # except the profile's own owner — see `from_model`'s `for_owner`.
     gender: Optional[str]
+    showGenderOnProfile: bool = False
+    # Month/day only ("June 10"), derived from the account's `dateOfBirth` —
+    # the year never leaves the account row via this field.
+    birthday: Optional[str] = None
+    showBirthdayOnProfile: bool = False
     areaOfInterest: Optional[str]
     contentCategories: List[str]
     socialInstagram: Optional[str]
@@ -55,7 +62,13 @@ class CreatorProfileType:
     contactShowDirections: bool = False
 
     @classmethod
-    def from_model(cls, instance: CreatorProfile):
+    def from_model(cls, instance: CreatorProfile, for_owner: bool = False):
+        """`for_owner=True` is for `myProfile`/`updateProfile` — the profile's
+        own owner always sees their real gender/birthday regardless of the
+        show-on-profile toggles, the same way a private settings screen would.
+        Every other caller (`profileByUsername`, search, suggestions) leaves
+        it False, so an unset toggle actually hides the value rather than
+        merely hiding it in the one screen that happened to check."""
         # Local imports: `Content` lives in the `content` app, which itself
         # references `creator_profile` via a string FK — a top-level import
         # here would risk a circular import between the two apps.
@@ -69,6 +82,12 @@ class CreatorProfileType:
             raw = getattr(settings, "subscription_price", None)
             if raw is not None:
                 sub_price = float(raw)
+
+        gender_visible = for_owner or instance.show_gender_on_profile
+        birthday_visible = for_owner or instance.show_birthday_on_profile
+        dob = getattr(instance.user, "date_of_birth", None)
+        birthday = dob.strftime("%B %d") if (birthday_visible and dob) else None
+
         return cls(
             id=strawberry.ID(str(instance.id)),
             userId=strawberry.ID(str(instance.user_id)),
@@ -83,7 +102,10 @@ class CreatorProfileType:
             city=instance.city,
             preferredLanguage=instance.preferred_language,
             timezone=instance.timezone,
-            gender=instance.gender,
+            gender=instance.gender if gender_visible else None,
+            showGenderOnProfile=instance.show_gender_on_profile,
+            birthday=birthday,
+            showBirthdayOnProfile=instance.show_birthday_on_profile,
             areaOfInterest=instance.area_of_interest,
             contentCategories=list(instance.content_categories or []),
             socialInstagram=instance.social_instagram,
@@ -133,6 +155,8 @@ class UpdateProfileInput:
     city: Optional[str] = None
     nationality: Optional[str] = None
     gender: Optional[str] = None
+    showGenderOnProfile: Optional[bool] = None
+    showBirthdayOnProfile: Optional[bool] = None
     areaOfInterest: Optional[str] = None
     contentCategories: Optional[List[str]] = None
     preferredLanguage: Optional[str] = None
