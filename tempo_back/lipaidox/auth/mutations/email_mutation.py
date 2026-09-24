@@ -159,10 +159,16 @@ class EmailMutation:
                 "We could not send the verification email. "
                 "Check server email settings or try again later."
             )
-            if getattr(settings, "DEBUG", False):
-                detail = (str(exc) or type(exc).__name__).strip()
-                if detail:
-                    msg = f"{msg} (detail: {detail[:400]})"
+            # Deliberately not gated behind settings.DEBUG. The generic
+            # message alone made a real production email misconfiguration
+            # (SMTP blocked by the host, bad credentials, unverified sender
+            # domain — three completely different fixes) indistinguishable
+            # from outside; this call requires auth already, and the detail
+            # is an SMTP/provider error string (e.g. "535 Authentication
+            # failed"), never a credential itself.
+            detail = (str(exc) or type(exc).__name__).strip()
+            if detail:
+                msg = f"{msg} (detail: {detail[:400]})"
             raise Exception(msg) from exc
 
         return SendEmailVerificationOtpResult(success=True, inline_otp=None)
