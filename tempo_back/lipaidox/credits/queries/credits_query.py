@@ -15,6 +15,7 @@ from ..schema.credits_schema import (
 )
 from ..seed import ensure_default_packages
 from lipaidox.auth.permissions import UserRoles
+from lipaidox.cache import NS_CREDIT_PACKAGES, TTL_CATALOG, get_or_set_models
 
 
 def require_auth(info):
@@ -51,19 +52,24 @@ class CreditsQuery:
         isActive: Optional[bool] = True
     ) -> List[CreditPackageType]:
         """Get available credit packages"""
-        if creditType in (None, CreditType.CREATOR_CREDIT):
-            # A database with no creator packs at all gets the standard ones.
-            ensure_default_packages()
-        queryset = CreditPackage.objects.all()
+        def load():
+            if creditType in (None, CreditType.CREATOR_CREDIT):
+                # A database with no creator packs at all gets the standard ones.
+                ensure_default_packages()
+            queryset = CreditPackage.objects.all()
 
-        if isActive is not None:
-            queryset = queryset.filter(is_active=isActive)
-        if creditType:
-            queryset = queryset.filter(credit_type=creditType)
-        if target:
-            queryset = queryset.filter(target=target)
+            if isActive is not None:
+                queryset = queryset.filter(is_active=isActive)
+            if creditType:
+                queryset = queryset.filter(credit_type=creditType)
+            if target:
+                queryset = queryset.filter(target=target)
+            return queryset.order_by('sort_order', 'price_usd')
 
-        return [CreditPackageType.from_model(pkg) for pkg in queryset.order_by('sort_order', 'price_usd')]
+        packages = get_or_set_models(
+            NS_CREDIT_PACKAGES, "list", creditType, target, isActive, ttl=TTL_CATALOG, loader=load,
+        )
+        return [CreditPackageType.from_model(pkg) for pkg in packages]
 
     @strawberry.field
     def credit_package_by_id(self, info: strawberry.types.Info, packageId: strawberry.ID) -> Optional[CreditPackageType]:
@@ -77,10 +83,14 @@ class CreditsQuery:
     @strawberry.field
     def featured_packages(self, info: strawberry.types.Info, creditType: Optional[str] = None) -> List[CreditPackageType]:
         """Get featured credit packages"""
-        queryset = CreditPackage.objects.filter(is_featured=True, is_active=True)
-        if creditType:
-            queryset = queryset.filter(credit_type=creditType)
-        return [CreditPackageType.from_model(pkg) for pkg in queryset.order_by('sort_order')]
+        def load():
+            queryset = CreditPackage.objects.filter(is_featured=True, is_active=True)
+            if creditType:
+                queryset = queryset.filter(credit_type=creditType)
+            return queryset.order_by('sort_order')
+
+        packages = get_or_set_models(NS_CREDIT_PACKAGES, "featured", creditType, ttl=TTL_CATALOG, loader=load)
+        return [CreditPackageType.from_model(pkg) for pkg in packages]
 
     # Conversion Rate Queries
     @strawberry.field

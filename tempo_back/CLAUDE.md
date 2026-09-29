@@ -62,7 +62,7 @@ There are two module families sharing the one schema: the creator-platform modul
 
 Uploads go to `media/`. In DEBUG, `lipaidox_backend/media_serve.ranged_media_serve` serves them with HTTP Range support (206 responses) so mobile video playback works — don't replace it with plain `static()` serving.
 
-`lipaidox/media_processor/tasks.py` defines the Celery media pipeline task `process_media_pipeline_task`, enqueued by `ContentMutation` when main video media is created; it is currently a logging no-op placeholder — extend it for transcoding/poster frames/HLS rather than adding a second pipeline. Note **no Celery app is configured** (no `celery.py`, no `CELERY_*` settings): `_schedule_main_video_processing` in `lipaidox/content/mutations/content_mutation.py` tries `.delay()` and falls back to calling the task synchronously, so don't assume a worker is running.
+`lipaidox/media_processor/tasks.py` defines the Celery media pipeline task `process_media_pipeline_task`, enqueued by `ContentMutation` when main video media is created; it is currently a logging no-op placeholder — extend it for transcoding/poster frames/HLS rather than adding a second pipeline. The Celery app lives in `lipaidox_backend/celery.py` (`celery -A lipaidox_backend worker|beat`). Queue work from request code with `lipaidox.tasking.enqueue_on_commit`. Without `CELERY_BROKER_URL` tasks run eagerly (inline), so don't assume a worker is running. Caching goes through `lipaidox/cache.py`; see README.md → "Redis, caching and Celery".
 
 ## Testing
 

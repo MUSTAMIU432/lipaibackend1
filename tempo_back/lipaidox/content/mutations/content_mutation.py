@@ -24,35 +24,34 @@ logger = logging.getLogger(__name__)
 def _announce_if_published(content) -> None:
     """Fan out a NEW_CONTENT_POSTED notification the first time content is published.
 
-    Idempotent and best-effort: the service guards on ``followers_notified`` and
-    swallows its own errors, so this can be called from every publish path
-    without risk of double-blasting or breaking the mutation.
+    Queued to a Celery worker after commit (one notification row per follower
+    plus an Expo push is too slow to do inside the publish request). Cheap
+    pre-checks skip the enqueue for drafts and already-announced posts; the
+    task itself is idempotent and best-effort, so every publish path can call
+    this without risk of double-blasting or breaking the mutation.
     """
+    if content is None or content.status != "published" or getattr(content, "followers_notified", False):
+        return
     try:
-        from lipaidox.notifications.services.content_notifications import notify_new_content_posted
-        notify_new_content_posted(content)
+        from lipaidox.notifications.tasks import notify_new_content_posted_task
+        from lipaidox.tasking import enqueue_on_commit
+
+        enqueue_on_commit(notify_new_content_posted_task, str(content.pk))
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("new-content fan-out skipped: %s", exc)
 
 
 def _schedule_main_video_processing(media_obj_id: int, user_id: int) -> None:
-    """Enqueue Celery pipeline for main video; fall back to sync if broker is unavailable."""
+    """Enqueue the Celery pipeline for a main video after commit (inline if the broker is unreachable)."""
     try:
         from django.contrib.contenttypes.models import ContentType
 
         from lipaidox.media_processor.tasks import process_media_pipeline_task
 
+        from lipaidox.tasking import enqueue_on_commit
+
         ct = ContentType.objects.get_for_model(ContentMedia)
-        try:
-            process_media_pipeline_task.delay(ct.id, media_obj_id, user_id)
-        except Exception:
-            logger.debug(
-                "media pipeline: async enqueue failed, running sync (ct_id=%s media_id=%s)",
-                ct.id,
-                media_obj_id,
-                exc_info=True,
-            )
-            process_media_pipeline_task(ct.id, media_obj_id, user_id)
+        enqueue_on_commit(process_media_pipeline_task, ct.id, media_obj_id, user_id)
     except ImportError:
         logger.warning(
             "lipaidox.media_processor.tasks missing; skipping video pipeline for media_id=%s",

@@ -12,6 +12,7 @@ from ..schema.review_schema import (
     ReviewEligibilityType,
 )
 from ..services.social_service import get_target_profile, review_summary, published_reviews
+from lipaidox.cache import NS_REVIEW_SUMMARY, TTL_AGGREGATE, get_or_set
 
 
 def build_review_type(review: Review, viewer_helpful_ids: set) -> ReviewType:
@@ -98,7 +99,7 @@ class ReviewQuery:
     @strawberry.field
     def review_summary(self, info, target_user_id: strawberry.ID) -> ReviewSummaryType:
         profile = get_target_profile(target_user_id)
-        s = review_summary(profile)
+        s = get_or_set(NS_REVIEW_SUMMARY, profile.pk, ttl=TTL_AGGREGATE, loader=lambda: review_summary(profile))
         return ReviewSummaryType(
             averageRating=s["averageRating"],
             totalReviews=s["totalReviews"],

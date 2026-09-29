@@ -6,6 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from strawberry.django.views import GraphQLView
 from lipaidox_backend.schema import schema as graphql_schema
 from lipaidox.auth.jwt_auth import authenticate_request
+from lipaidox_backend.health import health_view
 
 
 class JWTGraphQLView(GraphQLView):
@@ -18,6 +19,7 @@ class JWTGraphQLView(GraphQLView):
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("health/", health_view, name="health"),
     path("graphql/", csrf_exempt(JWTGraphQLView.as_view(schema=graphql_schema, graphiql=True))),
     path("api/", include("lipaidox.creator_profile.urls")),
     path("payments/", include("lipaidox.payment.urls")),

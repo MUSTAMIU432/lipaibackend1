@@ -297,6 +297,115 @@ USE_I18N = True
 USE_TZ = True
 
 # -----------------------------
+# Redis: cache + Celery broker/results
+# -----------------------------
+# PostgreSQL stays the source of truth. Redis only holds data that can be lost
+# at any moment: cached read models (every key has a TTL) and Celery's queue.
+#
+# Every Redis variable is optional. Unset REDIS_URL → per-process memory cache
+# (Django's stock behaviour). Unset CELERY_BROKER_URL → tasks run inline in the
+# request, exactly as before Celery existed. So a host without Redis (Render's
+# current web service) keeps working unchanged; set the variables once a Redis
+# instance exists and the same code starts using it.
+#
+# Use `rediss://` for TLS on a managed Redis. Never expose Redis publicly.
+REDIS_URL = (config("REDIS_URL", default="") or "").strip()
+CACHE_KEY_PREFIX = (config("CACHE_KEY_PREFIX", default="lipaidox") or "lipaidox").strip()
+
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": CACHE_KEY_PREFIX,
+            "TIMEOUT": 300,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                # JSON, not pickle: a cache entry can never execute code when read back.
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+                # A Redis outage degrades to cache misses (reads hit Postgres)
+                # instead of 500s — see DJANGO_REDIS_IGNORE_EXCEPTIONS below.
+                "SOCKET_CONNECT_TIMEOUT": 1,
+                "SOCKET_TIMEOUT": 1,
+                "CONNECTION_POOL_KWARGS": {"max_connections": 50, "retry_on_timeout": True},
+            },
+        }
+    }
+    DJANGO_REDIS_IGNORE_EXCEPTIONS = True
+    DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "lipaidox-default",
+            "KEY_PREFIX": CACHE_KEY_PREFIX,
+            "TIMEOUT": 300,
+        }
+    }
+
+# Celery — app lives in lipaidox_backend/celery.py:
+#   celery -A lipaidox_backend worker --loglevel=info
+#   celery -A lipaidox_backend beat --loglevel=info
+CELERY_BROKER_URL = (config("CELERY_BROKER_URL", default="") or "").strip()
+CELERY_RESULT_BACKEND = (config("CELERY_RESULT_BACKEND", default="") or "").strip() or None
+# No broker → run tasks synchronously in-process (the pre-Celery behaviour).
+CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=not CELERY_BROKER_URL, cast=bool)
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+# Task modules outside INSTALLED_APPS, which autodiscovery can't see.
+CELERY_IMPORTS = ("lipaidox.media_processor.tasks",)
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+# Nothing reads task return values except the infrastructure ping; skipping
+# results by default keeps Redis from filling up with ones no one collects.
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_RESULT_EXPIRES = 3600
+# Same fast-fail for the result backend (default is ~20 retries, one a second).
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    "retry_policy": {"max_retries": 1, "interval_start": 0, "interval_step": 0.2, "interval_max": 0.5},
+}
+# Tasks are written to be idempotent, so re-running one after a worker crash
+# is safe — ack only after it finishes, and hand out one task at a time.
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_SOFT_TIME_LIMIT = 240
+CELERY_TASK_TIME_LIMIT = 300
+# Recycle a worker process after this many tasks / this much RAM (KB), so a
+# slow leak (ML models in lost_found, large media) can't grow forever.
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config("CELERY_WORKER_MAX_TASKS_PER_CHILD", default=200, cast=int)
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config("CELERY_WORKER_MAX_MEMORY_PER_CHILD", default=300_000, cast=int)
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# If the broker is down, fail the enqueue fast (the caller falls back to
+# running inline — see lipaidox/tasking.py) rather than hanging the request.
+CELERY_TASK_PUBLISH_RETRY = True
+CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 2, "interval_start": 0, "interval_step": 0.5, "interval_max": 1}
+CELERY_BROKER_CONNECTION_TIMEOUT = 2
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_connect_timeout": 1,
+    "socket_timeout": 5,
+    "visibility_timeout": 3600,
+    # Connection attempts when publishing: without these kombu keeps retrying
+    # for ~20 s before giving up, which is how long a request would hang.
+    "max_retries": 1,
+    "interval_start": 0,
+    "interval_step": 0.2,
+    "interval_max": 0.5,
+}
+
+CELERY_BEAT_SCHEDULE = {
+    # Safety net for live billing: bill running sessions up to now and end
+    # exhausted / dropped ones. Heartbeats do the normal billing; this used to
+    # need a cron entry for `manage.py bill_live_sessions`. Idempotent (row
+    # locks), so an overlapping cron run is harmless.
+    "bill-live-sessions": {
+        "task": "lipaidox.credits.bill_live_sessions",
+        "schedule": 60.0,
+        "options": {"expires": 55},
+    },
+}
+
+# -----------------------------
 # Static Files
 # -----------------------------
 STATIC_URL = "static/"

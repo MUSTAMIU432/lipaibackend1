@@ -13,3 +13,6 @@ db.sqlite3
 myenv/
 media/
 .claude/settings.local.json*
+
+# Celery Beat local schedule state
+celerybeat-schedule*

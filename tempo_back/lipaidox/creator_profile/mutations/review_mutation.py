@@ -16,6 +16,7 @@ from ..schema.review_schema import (
 )
 from ..services.social_service import require_user, get_target_profile
 from ..queries.review_query import build_review_type
+from lipaidox.cache import NS_REVIEW_SUMMARY, invalidate_on_commit
 
 TITLE_MAX = 120
 BODY_MIN = 3
@@ -72,6 +73,7 @@ class ReviewMutation:
                 )
         except IntegrityError:
             raise Exception("You have already reviewed this creator")
+        invalidate_on_commit(NS_REVIEW_SUMMARY, profile.pk)
         return CreateReviewPayload(review=build_review_type(review, set()))
 
     @strawberry.mutation
@@ -94,6 +96,7 @@ class ReviewMutation:
             review.title = title.strip()
         review.edited_at = timezone.now()
         review.save(update_fields=["rating", "body", "title", "edited_at", "updated_at"])
+        invalidate_on_commit(NS_REVIEW_SUMMARY, review.target_id)
         helpful = {str(review.id)} if ReviewHelpful.objects.filter(review=review, user=user).exists() else set()
         return UpdateReviewPayload(review=build_review_type(review, helpful))
 
@@ -108,6 +111,7 @@ class ReviewMutation:
         review.deleted_at = timezone.now()
         review.status = ReviewStatus.HIDDEN
         review.save(update_fields=["deleted_at", "status", "updated_at"])
+        invalidate_on_commit(NS_REVIEW_SUMMARY, review.target_id)
         return DeleteReviewPayload(success=True)
 
     @strawberry.mutation

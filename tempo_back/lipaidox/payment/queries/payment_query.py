@@ -4,6 +4,7 @@ from ..models import PaymentMethod, MobileMoneyProvider, TaxProfile
 from ..schema.payment_schema import PaymentMethodType, MobileMoneyProviderType, TaxProfileType
 from multitenant.utils.tenant_context import get_current_tenant
 from lipaidox.auth.permissions import require_creator
+from lipaidox.cache import NS_MOBILE_MONEY_PROVIDERS, TTL_CATALOG, get_or_set_models
 
 @strawberry.type
 class PaymentQuery:
@@ -17,7 +18,10 @@ class PaymentQuery:
 
     @strawberry.field
     def mobile_money_providers(self) -> List[MobileMoneyProviderType]:
-        providers = MobileMoneyProvider.objects.filter(is_active=True)
+        providers = get_or_set_models(
+            NS_MOBILE_MONEY_PROVIDERS, "active", ttl=TTL_CATALOG,
+            loader=lambda: MobileMoneyProvider.objects.filter(is_active=True),
+        )
         return [MobileMoneyProviderType.from_model(p) for p in providers]
 
     @strawberry.field

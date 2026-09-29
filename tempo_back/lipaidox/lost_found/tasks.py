@@ -14,8 +14,8 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 
 # Import AI services
-from ..services import get_ai_service_manager
-from ..models.lost_found import LostFoundItem, ItemImage, ProductCache
+from .services import get_ai_service_manager
+from .models.lost_found import LostFoundItem, ItemImage, ProductCache
 
 User = get_user_model()
 
