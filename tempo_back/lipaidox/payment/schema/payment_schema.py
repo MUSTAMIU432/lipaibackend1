@@ -1,7 +1,7 @@
 import strawberry
 from typing import Optional, List
 from datetime import datetime
-from ..models import PaymentMethod, MobileMoneyProvider
+from ..models import PaymentMethod, MobileMoneyProvider, TaxProfile
 
 @strawberry.type
 class MobileMoneyProviderType:
@@ -89,3 +89,57 @@ class CardInput:
     last4: str
     expiryMonth: int
     expiryYear: int
+
+@strawberry.input
+class CardPayoutInput:
+    """
+    Card payout details. Deliberately no full card number and no CVV: the
+    client sends only what's safe to store (last four, brand, expiry) and
+    never transmits the rest — holding a PAN or CVV would pull this backend
+    into PCI scope. Pushing a payout to the card needs a gateway token,
+    which is attached when the method is verified.
+    """
+    holderName: str
+    brand: str
+    last4: str
+    expiryMonth: int
+    expiryYear: int
+
+@strawberry.type
+class TaxProfileType:
+    id: strawberry.ID
+    countryCode: str
+    countryName: str
+    taxAuthority: str
+    taxpayerName: str
+    tinNumber: str
+    tinCertificateUrl: str
+    status: str
+    rejectionReason: Optional[str]
+    submittedAt: datetime
+    verifiedAt: Optional[datetime]
+
+    @classmethod
+    def from_model(cls, instance: TaxProfile):
+        return cls(
+            id=strawberry.ID(str(instance.id)),
+            countryCode=instance.country_code,
+            countryName=instance.country_name,
+            taxAuthority=instance.tax_authority,
+            taxpayerName=instance.taxpayer_name,
+            tinNumber=instance.tin_number,
+            tinCertificateUrl=instance.tin_certificate_url,
+            status=instance.status,
+            rejectionReason=instance.rejection_reason,
+            submittedAt=instance.submitted_at,
+            verifiedAt=instance.verified_at,
+        )
+
+@strawberry.input
+class TaxInformationInput:
+    countryCode: str
+    countryName: str
+    taxAuthority: str
+    taxpayerName: str
+    tinNumber: str
+    tinCertificateUrl: str

@@ -64,6 +64,7 @@ def compute_creator_eligibility(user) -> CreatorEligibilityType:
     from lipaidox.creator_plans.constants import CreatorPlanTier
     from lipaidox.content.models.content import Content, ContentStatus
     from lipaidox.payment.models.method import PaymentMethod, PaymentMethodStatus, TaxWithholdingRate
+    from lipaidox.payment.models.tax_profile import TaxProfile, TaxProfileStatus
 
     profile = CreatorProfile.objects.filter(user=user).first()
 
@@ -161,13 +162,28 @@ def compute_creator_eligibility(user) -> CreatorEligibilityType:
         detail=None if payout_met else "Add a payout method in your wallet",
     ))
 
-    tax_met = primary_method is not None and primary_method.tax_withholding_rate != TaxWithholdingRate.NONE
+    # Met by a verified taxpayer registration (the mobile Tax Information
+    # screen), or — for creators set up before that existed — an admin-set
+    # withholding rate on the primary payout method.
+    tax_profile = TaxProfile.objects.filter(creator=profile).first() if profile is not None else None
+    tax_met = (
+        (tax_profile is not None and tax_profile.status == TaxProfileStatus.VERIFIED)
+        or (primary_method is not None and primary_method.tax_withholding_rate != TaxWithholdingRate.NONE)
+    )
+    if tax_met:
+        tax_detail = None
+    elif tax_profile is not None and tax_profile.status == TaxProfileStatus.PENDING:
+        tax_detail = "Tax details submitted — awaiting verification"
+    elif tax_profile is not None and tax_profile.status == TaxProfileStatus.REJECTED:
+        tax_detail = tax_profile.rejection_reason or "Tax details were rejected — resubmit them"
+    else:
+        tax_detail = "Finish your tax details on the payout method"
     rows.append(CreatorEligibilityRequirementType(
         key="tax_payment_info",
         label="Tax & Payment Information",
         description="Complete required tax and payout information",
         met=tax_met,
-        detail=None if tax_met else "Finish your tax details on the payout method",
+        detail=tax_detail,
     ))
 
     # 9. Authority — the platform's own verification badge.

@@ -1,7 +1,7 @@
 import strawberry
 from typing import List, Optional
-from ..models import PaymentMethod, MobileMoneyProvider
-from ..schema.payment_schema import PaymentMethodType, MobileMoneyProviderType
+from ..models import PaymentMethod, MobileMoneyProvider, TaxProfile
+from ..schema.payment_schema import PaymentMethodType, MobileMoneyProviderType, TaxProfileType
 from multitenant.utils.tenant_context import get_current_tenant
 from lipaidox.auth.permissions import require_creator
 
@@ -19,3 +19,10 @@ class PaymentQuery:
     def mobile_money_providers(self) -> List[MobileMoneyProviderType]:
         providers = MobileMoneyProvider.objects.filter(is_active=True)
         return [MobileMoneyProviderType.from_model(p) for p in providers]
+
+    @strawberry.field
+    @require_creator
+    def my_tax_information(self, info: strawberry.types.Info) -> Optional[TaxProfileType]:
+        user = info.context.request.user
+        profile = TaxProfile.objects.filter(creator__user=user).first()
+        return TaxProfileType.from_model(profile) if profile else None

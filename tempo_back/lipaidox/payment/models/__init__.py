@@ -4,6 +4,7 @@ from .method import (
 )
 from .provider import MobileMoneyProvider
 from .charge import Charge, ChargePurpose, ChargeStatus
+from .tax_profile import TaxProfile, TaxProfileStatus
 
 __all__ = [
     "PaymentMethod",
@@ -16,4 +17,6 @@ __all__ = [
     "Charge",
     "ChargePurpose",
     "ChargeStatus",
+    "TaxProfile",
+    "TaxProfileStatus",
 ]
