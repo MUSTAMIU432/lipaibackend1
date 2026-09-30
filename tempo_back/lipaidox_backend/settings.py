@@ -753,7 +753,11 @@ EMAIL_VERIFICATION_INLINE_OTP = config(
 # (`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in the RN repo's eas.json), so its ID tokens carry
 # it as `aud`. Defaulting to it means a deploy that forgot this variable still accepts
 # the app's sign-ins instead of failing "not configured" — it is a public identifier.
-_APP_GOOGLE_WEB_CLIENT_ID = "273053369879-5jdgrvn3per061237j43t0441ke8fhi0.apps.googleusercontent.com"
+# Lives in Google Cloud project `mustanet-509717` beside the Android client below.
+_APP_GOOGLE_WEB_CLIENT_ID = "289138513882-kgivgr67j0mcts05plvvn1e538bmi5eq.apps.googleusercontent.com"
+# The Web client builds before 2026-09-30 were configured with (project 273053369879).
+# Still accepted so installed APKs keep signing in until they update.
+_LEGACY_APP_GOOGLE_WEB_CLIENT_ID = "273053369879-5jdgrvn3per061237j43t0441ke8fhi0.apps.googleusercontent.com"
 GOOGLE_OAUTH_CLIENT_ID = (
     config("GOOGLE_OAUTH_CLIENT_ID", default="").strip() or _APP_GOOGLE_WEB_CLIENT_ID
 )
@@ -766,10 +770,12 @@ GOOGLE_OAUTH_ANDROID_CLIENT_ID = (
 )
 # Optional: comma-separated OAuth client IDs to accept in addition to the primary (e.g.
 # second Web client or env-specific client). Never put service account client emails here.
-GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS = config(
-    "GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS",
-    default="",
-).strip()
+GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS = ",".join(
+    [
+        config("GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS", default="").strip(),
+        _LEGACY_APP_GOOGLE_WEB_CLIENT_ID,
+    ]
+)
 # Web redirect URL registered in Google Cloud Console (exact string match).
 # Required for GraphQL `googleOauthAuthorizationUrl`; if empty, that query returns "".
 GOOGLE_OAUTH_REDIRECT_URI = config("GOOGLE_OAUTH_REDIRECT_URI", default="").strip()
