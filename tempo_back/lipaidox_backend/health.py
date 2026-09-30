@@ -75,6 +75,9 @@ def _auth() -> dict:
         "googleClientIds": _google_oauth_audiences(),
         "emailBackend": _EMAIL_BACKEND_LABELS.get(settings.EMAIL_BACKEND, "custom"),
         "emailFromConfigured": bool(settings.DEFAULT_FROM_EMAIL),
+        # Domain only, never the mailbox. `resend.dev` is Resend's testing sender,
+        # which delivers solely to the Resend account owner's own address.
+        "emailFromDomain": (settings.DEFAULT_FROM_EMAIL or "").rpartition("@")[2].strip(" >") or None,
         "emailVerificationInlineOtp": bool(settings.EMAIL_VERIFICATION_INLINE_OTP),
     }
 

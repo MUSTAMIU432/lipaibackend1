@@ -212,6 +212,7 @@ class HealthViewTests(SimpleTestCase):
         EMAIL_BACKEND="anymail.backends.resend.EmailBackend",
         EMAIL_HOST_PASSWORD="smtp-secret",
         RESEND_API_KEY="re_secret",
+        DEFAULT_FROM_EMAIL="Lipaidox <no-reply@lipaidox.app>",
     )
     def test_reports_auth_config_without_secrets(self):
         with mock.patch("lipaidox_backend.health._database", return_value="ok"):
@@ -222,6 +223,8 @@ class HealthViewTests(SimpleTestCase):
             ["web.apps.googleusercontent.com", "android.apps.googleusercontent.com"],
         )
         self.assertEqual(auth["emailBackend"], "resend")
+        self.assertEqual(auth["emailFromDomain"], "lipaidox.app")
+        self.assertNotIn("no-reply", resp.content.decode())
         self.assertNotIn("secret", resp.content.decode())
 
 
