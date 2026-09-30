@@ -309,6 +309,10 @@ USE_TZ = True
 # instance exists and the same code starts using it.
 #
 # Use `rediss://` for TLS on a managed Redis. Never expose Redis publicly.
+# Google Search Console "HTML tag" token — added as a meta tag to the public
+# pages (lipaidox_backend/legal_pages.py) so the domain can be verified.
+GOOGLE_SITE_VERIFICATION = (config("GOOGLE_SITE_VERIFICATION", default="") or "").strip()
+
 REDIS_URL = (config("REDIS_URL", default="") or "").strip()
 CACHE_KEY_PREFIX = (config("CACHE_KEY_PREFIX", default="lipaidox") or "lipaidox").strip()
 

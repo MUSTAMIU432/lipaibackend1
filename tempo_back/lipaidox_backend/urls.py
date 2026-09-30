@@ -6,6 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from strawberry.django.views import GraphQLView
 from lipaidox_backend.schema import schema as graphql_schema
 from lipaidox.auth.jwt_auth import authenticate_request
+from lipaidox_backend import legal_pages
 from lipaidox_backend.health import health_view
 
 
@@ -23,6 +24,11 @@ urlpatterns = [
     path("graphql/", csrf_exempt(JWTGraphQLView.as_view(schema=graphql_schema, graphiql=True))),
     path("api/", include("lipaidox.creator_profile.urls")),
     path("payments/", include("lipaidox.payment.urls")),
+    # Public pages: home + legal documents (Google OAuth consent screen, app stores).
+    path("", legal_pages.home, name="home"),
+    path("terms/", legal_pages.terms, name="terms"),
+    path("privacy/", legal_pages.privacy, name="privacy"),
+    path("legal/<slug:slug>/", legal_pages.legal_page, name="legal_page"),
     path("", include("lipaidox.lost_found.urls")),
 ]
 
