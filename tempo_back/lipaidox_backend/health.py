@@ -78,6 +78,9 @@ def _auth() -> dict:
         # Domain only, never the mailbox. `resend.dev` is Resend's testing sender,
         # which delivers solely to the Resend account owner's own address.
         "emailFromDomain": (settings.DEFAULT_FROM_EMAIL or "").rpartition("@")[2].strip(" >") or None,
+        # Host name only (e.g. smtp.gmail.com) — never the user or password.
+        "emailSmtpHost": settings.EMAIL_HOST or None,
+        "emailSmtpLoginConfigured": bool(settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD),
         "emailVerificationInlineOtp": bool(settings.EMAIL_VERIFICATION_INLINE_OTP),
     }
 

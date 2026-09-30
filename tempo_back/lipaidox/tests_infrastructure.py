@@ -224,6 +224,7 @@ class HealthViewTests(SimpleTestCase):
         )
         self.assertEqual(auth["emailBackend"], "resend")
         self.assertEqual(auth["emailFromDomain"], "lipaidox.app")
+        self.assertIn("emailSmtpLoginConfigured", auth)
         self.assertNotIn("no-reply", resp.content.decode())
         self.assertNotIn("secret", resp.content.decode())
 
@@ -249,3 +250,35 @@ class GoogleAudienceTests(SimpleTestCase):
         audiences = self.audiences()
         self.assertTrue(any(a.startswith("289138513882-kgivgr67") for a in audiences))
         self.assertTrue(any(a.startswith("273053369879-5jdgrvn3") for a in audiences))
+
+
+class EmailBackendSelectionTests(SimpleTestCase):
+    """Settings pick the backend at import, so each case runs in a fresh interpreter."""
+
+    def backend_for(self, **env):
+        import os
+        import subprocess
+        import sys
+
+        full = {**os.environ, "EMAIL_BACKEND": "", "EMAIL_HOST": "", **env}
+        out = subprocess.run(
+            [sys.executable, "-c", "from lipaidox_backend import settings as s; print(s.EMAIL_BACKEND)"],
+            env=full, capture_output=True, text=True, check=True,
+        )
+        return out.stdout.strip().splitlines()[-1]
+
+    def test_gmail_sender_with_smtp_uses_smtp_not_resend(self):
+        backend = self.backend_for(
+            RESEND_API_KEY="re_x", EMAIL_HOST="smtp.gmail.com", DEFAULT_FROM_EMAIL="Lipaidox <me@gmail.com>",
+        )
+        self.assertEqual(backend, "django.core.mail.backends.smtp.EmailBackend")
+
+    def test_own_domain_sender_keeps_resend(self):
+        backend = self.backend_for(
+            RESEND_API_KEY="re_x", EMAIL_HOST="smtp.gmail.com", DEFAULT_FROM_EMAIL="no-reply@lipaidox.app",
+        )
+        self.assertEqual(backend, "anymail.backends.resend.EmailBackend")
+
+    def test_resend_kept_when_no_smtp_to_fall_back_to(self):
+        backend = self.backend_for(RESEND_API_KEY="re_x", DEFAULT_FROM_EMAIL="me@gmail.com")
+        self.assertEqual(backend, "anymail.backends.resend.EmailBackend")

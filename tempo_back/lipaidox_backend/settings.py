@@ -630,9 +630,15 @@ DEFAULT_FROM_EMAIL = (config("DEFAULT_FROM_EMAIL", default="") or "").strip()
 SERVER_EMAIL = (config("SERVER_EMAIL", default="") or "").strip()
 
 _email_backend_explicit = (config("EMAIL_BACKEND", default="") or "").strip()
+# Resend only sends from a domain verified on it, and a free-mail domain can never be
+# verified — so a gmail.com "From" through Resend fails every send. When the sender is
+# such an address and SMTP credentials exist, SMTP is the only backend that can work.
+_FREE_MAIL_DOMAINS = {"gmail.com", "googlemail.com", "yahoo.com", "outlook.com", "hotmail.com", "live.com", "icloud.com"}
+EMAIL_FROM_DOMAIN = (DEFAULT_FROM_EMAIL or EMAIL_HOST_USER).rpartition("@")[2].strip(" >").lower()
+_resend_can_send = bool(RESEND_API_KEY) and not (EMAIL_HOST and EMAIL_FROM_DOMAIN in _FREE_MAIL_DOMAINS)
 if _email_backend_explicit:
     EMAIL_BACKEND = _email_backend_explicit
-elif RESEND_API_KEY:
+elif _resend_can_send:
     EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 elif EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
