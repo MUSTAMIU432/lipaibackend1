@@ -9,6 +9,11 @@ Returns 503 only when PostgreSQL is down. A Redis or worker outage is reported
 as ``degraded`` with 200, because the app keeps serving without them (cache
 misses fall through to Postgres, tasks run inline). Never includes URLs,
 hosts or credentials — just ``ok`` / ``not configured`` / an exception class.
+
+``auth`` reports what sign-up depends on: the Google OAuth client IDs accepted
+as ID-token audiences (public identifiers — the app ships them) and which email
+backend delivers verification codes. ``console`` there means codes are printed
+to the server log and never reach an inbox.
 """
 from django.conf import settings
 from django.db import connection
@@ -56,6 +61,24 @@ def _workers() -> str:
         return type(exc).__name__
 
 
+_EMAIL_BACKEND_LABELS = {
+    "anymail.backends.resend.EmailBackend": "resend",
+    "django.core.mail.backends.smtp.EmailBackend": "smtp",
+    "django.core.mail.backends.console.EmailBackend": "console (codes are not emailed)",
+}
+
+
+def _auth() -> dict:
+    from lipaidox.auth.googleOuth.googleOuth import _google_oauth_audiences
+
+    return {
+        "googleClientIds": _google_oauth_audiences(),
+        "emailBackend": _EMAIL_BACKEND_LABELS.get(settings.EMAIL_BACKEND, "custom"),
+        "emailFromConfigured": bool(settings.DEFAULT_FROM_EMAIL),
+        "emailVerificationInlineOtp": bool(settings.EMAIL_VERIFICATION_INLINE_OTP),
+    }
+
+
 @require_GET
 def health_view(request):
     checks = {"database": _database(), "cache": _cache(), "broker": _broker()}
@@ -69,5 +92,9 @@ def health_view(request):
 
     db_ok = checks["database"] == "ok"
     all_ok = db_ok and all(v.startswith(("ok", "not configured")) for v in checks.values())
-    body = {"status": "ok" if all_ok else ("degraded" if db_ok else "down"), "checks": checks}
+    body = {
+        "status": "ok" if all_ok else ("degraded" if db_ok else "down"),
+        "checks": checks,
+        "auth": _auth(),
+    }
     return JsonResponse(body, status=200 if db_ok else 503)

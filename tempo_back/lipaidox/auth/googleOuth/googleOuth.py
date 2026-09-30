@@ -97,8 +97,9 @@ def _google_oauth_audiences() -> list[str]:
     main = (getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", None) or "").strip()
     if main:
         ids.append(main)
+    android = (getattr(settings, "GOOGLE_OAUTH_ANDROID_CLIENT_ID", None) or "").strip()
     extra = (getattr(settings, "GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS", None) or "").strip()
-    for part in extra.split(","):
+    for part in [android, *extra.split(",")]:
         p = part.strip()
         if p and p not in ids:
             ids.append(p)

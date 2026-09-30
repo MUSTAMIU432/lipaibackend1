@@ -204,3 +204,46 @@ class HealthViewTests(SimpleTestCase):
             resp = self.call()
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(json.loads(resp.content)["status"], "degraded")
+
+    @override_settings(
+        GOOGLE_OAUTH_CLIENT_ID="web.apps.googleusercontent.com",
+        GOOGLE_OAUTH_ANDROID_CLIENT_ID="android.apps.googleusercontent.com",
+        GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS="",
+        EMAIL_BACKEND="anymail.backends.resend.EmailBackend",
+        EMAIL_HOST_PASSWORD="smtp-secret",
+        RESEND_API_KEY="re_secret",
+    )
+    def test_reports_auth_config_without_secrets(self):
+        with mock.patch("lipaidox_backend.health._database", return_value="ok"):
+            resp = self.call()
+        auth = json.loads(resp.content)["auth"]
+        self.assertEqual(
+            auth["googleClientIds"],
+            ["web.apps.googleusercontent.com", "android.apps.googleusercontent.com"],
+        )
+        self.assertEqual(auth["emailBackend"], "resend")
+        self.assertNotIn("secret", resp.content.decode())
+
+
+class GoogleAudienceTests(SimpleTestCase):
+    def audiences(self):
+        from lipaidox.auth.googleOuth.googleOuth import _google_oauth_audiences
+
+        return _google_oauth_audiences()
+
+    @override_settings(
+        GOOGLE_OAUTH_CLIENT_ID="web",
+        GOOGLE_OAUTH_ANDROID_CLIENT_ID="android",
+        GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS="extra, web ,",
+    )
+    def test_web_android_and_extra_clients_are_accepted_once_each(self):
+        self.assertEqual(self.audiences(), ["web", "android", "extra"])
+
+    @override_settings(GOOGLE_OAUTH_ANDROID_CLIENT_ID="", GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS="")
+    def test_default_web_client_is_the_apps(self):
+        from django.conf import settings
+
+        # The app's native sign-in mints tokens for this Web client — without it
+        # every mobile Google sign-in fails "not configured".
+        self.assertIn("273053369879-5jdgrvn3", self.audiences()[0])
+        self.assertEqual(self.audiences(), [settings.GOOGLE_OAUTH_CLIENT_ID])

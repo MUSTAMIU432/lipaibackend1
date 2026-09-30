@@ -749,7 +749,21 @@ EMAIL_VERIFICATION_INLINE_OTP = config(
 #   GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS # optional; comma-separated extra audiences
 #
 # Primary Web client ID (GIS `credential` JWT `aud` must match one of these).
-GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="").strip()
+# The mobile app's native Google Sign-In is configured with this same Web client
+# (`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in the RN repo's eas.json), so its ID tokens carry
+# it as `aud`. Defaulting to it means a deploy that forgot this variable still accepts
+# the app's sign-ins instead of failing "not configured" — it is a public identifier.
+_APP_GOOGLE_WEB_CLIENT_ID = "273053369879-5jdgrvn3per061237j43t0441ke8fhi0.apps.googleusercontent.com"
+GOOGLE_OAUTH_CLIENT_ID = (
+    config("GOOGLE_OAUTH_CLIENT_ID", default="").strip() or _APP_GOOGLE_WEB_CLIENT_ID
+)
+# Android OAuth client (package + signing SHA-1). Native sign-in never puts it in `aud`
+# (that is the Web client above) — it is `azp` — but accepting it is harmless and covers
+# a client configured without `webClientId`. Render names this plain `CLIENT_ID`.
+GOOGLE_OAUTH_ANDROID_CLIENT_ID = (
+    config("GOOGLE_OAUTH_ANDROID_CLIENT_ID", default="").strip()
+    or config("CLIENT_ID", default="").strip()
+)
 # Optional: comma-separated OAuth client IDs to accept in addition to the primary (e.g.
 # second Web client or env-specific client). Never put service account client emails here.
 GOOGLE_OAUTH_ADDITIONAL_CLIENT_IDS = config(
