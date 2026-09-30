@@ -1,5 +1,9 @@
+import logging
+
 import strawberry
 from typing import Optional, List
+from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
@@ -15,6 +19,62 @@ from ..schema.live_streaming_schema import (
     SendChatMessageInput, JoinStreamInput, LeaveStreamInput
 )
 from lipaidox.auth.permissions import UserRoles
+
+
+logger = logging.getLogger(__name__)
+
+#: A stream still marked LIVE this long after it started, with no billing
+#: session keeping track of it, was abandoned: the creator's app closed or
+#: crashed without calling `endLiveStream`. Left alone it shows as "LIVE"
+#: forever on the Live tab.
+ABANDONED_AFTER = timedelta(hours=int(getattr(settings, "LIVE_ABANDONED_AFTER_HOURS", 12)))
+#: How often a read may run the sweep below (seconds).
+_SWEEP_EVERY_SECONDS = 30
+
+
+def _expire_abandoned_live_streams():
+    """
+    End LIVE streams nobody is broadcasting any more, before listing them.
+
+    Two cases, each ended the way it would have been by the right owner:
+    - Streams with an ACTIVE billing session go through the billing sweeper,
+      which ends a dropped connection billed only up to its last heartbeat.
+      Normally a separate process runs it; running it here too means a missing
+      worker can't leave dead streams on the Live tab.
+    - Streams with no active billing session (started before live billing
+      existed, or on a server without it) that have been LIVE longer than
+      ABANDONED_AFTER are ended as `connection_lost`. Nothing is charged: there
+      is no session to bill.
+
+    Throttled through the cache so a busy Live tab doesn't sweep on every read,
+    and never allowed to fail the query it runs in front of.
+    """
+    try:
+        if not cache.add("live_streaming:abandoned_sweep", 1, _SWEEP_EVERY_SECONDS):
+            return
+    except Exception:  # noqa: BLE001 — no cache means no throttle, not no listing
+        pass
+
+    try:
+        from lipaidox.credits import live_billing
+        from lipaidox.credits.models import ReservationStatus
+
+        live_billing.bill_active_sessions()
+        (
+            LiveStream.objects.filter(
+                status=LiveStreamStatus.LIVE,
+                started_at__lt=timezone.now() - ABANDONED_AFTER,
+            )
+            .exclude(credit_reservation__status=ReservationStatus.ACTIVE)
+            .update(
+                status=LiveStreamStatus.ENDED,
+                ended_at=timezone.now(),
+                end_reason="connection_lost",
+                current_viewer_count=0,
+            )
+        )
+    except Exception:  # noqa: BLE001 — a failed sweep must not break the Live tab
+        logger.exception("Expiring abandoned live streams failed")
 
 
 def _stream_qs_with_creator():
@@ -78,6 +138,8 @@ class LiveStreamingQuery:
         limit: int = 50
     ) -> List[LiveStreamType]:
         """Get live streams with optional filters"""
+        if status in (None, LiveStreamStatus.LIVE):
+            _expire_abandoned_live_streams()
         queryset = _stream_qs_with_creator()
 
         if status:
@@ -113,6 +175,7 @@ class LiveStreamingQuery:
             created_at__lt=stale_cutoff,
             started_at__isnull=True,
         ).update(status=LiveStreamStatus.CANCELLED)
+        _expire_abandoned_live_streams()
 
         streams = (
             _stream_qs_with_creator()

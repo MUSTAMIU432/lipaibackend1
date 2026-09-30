@@ -1,4 +1,4 @@
-"""Like / save (bookmark) toggles for content, with a live `like_count`."""
+"""Like / save (bookmark) toggles and share counting for content, with live counters."""
 import strawberry
 from typing import List, Optional
 from django.db.models import F
@@ -50,6 +50,12 @@ class RecordViewResult:
 
 
 @strawberry.type
+class RecordShareResult:
+    contentId: strawberry.ID
+    shareCount: int
+
+
+@strawberry.type
 class ContentInteractionMutation:
     @strawberry.mutation
     def record_content_view(self, info: strawberry.types.Info, content_id: strawberry.ID) -> RecordViewResult:
@@ -64,6 +70,16 @@ class ContentInteractionMutation:
             Content.objects.filter(id=content.id).update(view_count=F("view_count") + 1)
         content.refresh_from_db(fields=["view_count"])
         return RecordViewResult(contentId=strawberry.ID(str(content.id)), viewCount=content.view_count)
+
+    @strawberry.mutation
+    def record_content_share(self, info: strawberry.types.Info, content_id: strawberry.ID) -> RecordShareResult:
+        """Count one completed share. Returns the new total so the client shows
+        the server's number rather than its own guess."""
+        user = _require_user(info)
+        content = _get_content(user, content_id)
+        Content.objects.filter(id=content.id).update(share_count=F("share_count") + 1)
+        content.refresh_from_db(fields=["share_count"])
+        return RecordShareResult(contentId=strawberry.ID(str(content.id)), shareCount=content.share_count)
 
     @strawberry.mutation
     def like_content(self, info: strawberry.types.Info, content_id: strawberry.ID) -> ContentInteractionResult:

@@ -232,6 +232,7 @@ class ContentType:
     # gate them behind `hideEngagementCounts` for non-owner viewers.
     rawViewCount: strawberry.Private[int]
     rawLikeCount: strawberry.Private[int]
+    rawShareCount: strawberry.Private[int]
     publishedAt: Optional[datetime]
     scheduledAt: Optional[datetime]
     attachments: List[ContentAttachmentType]
@@ -268,6 +269,12 @@ class ContentType:
     def like_count(self, info: strawberry.types.Info) -> int:
         if not self.hideEngagementCounts or self._viewer_is_owner(info):
             return self.rawLikeCount
+        return 0
+
+    @strawberry.field
+    def share_count(self, info: strawberry.types.Info) -> int:
+        if not self.hideEngagementCounts or self._viewer_is_owner(info):
+            return self.rawShareCount
         return 0
 
     @strawberry.field
@@ -393,6 +400,7 @@ class ContentType:
             episodeNumber=instance.episode_number,
             rawViewCount=instance.view_count,
             rawLikeCount=instance.like_count,
+            rawShareCount=instance.share_count,
             publishedAt=instance.published_at,
             scheduledAt=instance.scheduled_at,
             attachments=[ContentAttachmentType.from_model(a) for a in instance.attachments.all()],

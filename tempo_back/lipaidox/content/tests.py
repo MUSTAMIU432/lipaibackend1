@@ -76,3 +76,63 @@ class PurgeMissingMediaTests(TestCase):
             with self.assertRaises(CommandError):
                 call_command("purge_missing_media", "--apply", stdout=StringIO())
         self.assertEqual(Content.objects.filter(status=ContentStatus.ARCHIVED).count(), 0)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Engagement — likes, saves and shares persist and come back on the next read
+# ═════════════════════════════════════════════════════════════════════════════
+
+from types import SimpleNamespace as NS  # noqa: E402
+
+from lipaidox_backend.schema import schema  # noqa: E402
+
+
+def gql(user, query, variables=None):
+    """Run a document through the real schema as `user`; returns (data, errors)."""
+    request = NS(user=user, META={"REMOTE_ADDR": "10.0.0.7", "HTTP_USER_AGENT": "tests"})
+    result = schema.execute_sync(query, variable_values=variables or {}, context_value=NS(request=request))
+    return result.data, [str(e) for e in (result.errors or [])]
+
+
+READ = """query($id: ID!) { contentById(id: $id) { likeCount shareCount isLikedByViewer isSavedByViewer } }"""
+
+
+class EngagementTests(TestCase):
+    def setUp(self):
+        creator = User.objects.create_user(username="c1", email="c1@example.com", password="x", role="creator")
+        self.profile = CreatorProfile.objects.create(user=creator, username="c1")
+        self.fan = User.objects.create_user(username="f1", email="f1@example.com", password="x", role="fan")
+        self.content = Content.objects.create(creator=self.profile, title="p", status=ContentStatus.PUBLISHED)
+        self.vars = {"id": str(self.content.id)}
+
+    def read(self):
+        data, errors = gql(self.fan, READ, self.vars)
+        self.assertEqual(errors, [])
+        return data["contentById"]
+
+    def test_like_and_save_survive_a_fresh_read(self):
+        gql(self.fan, "mutation($id: ID!) { likeContent(contentId: $id) { liked } }", self.vars)
+        gql(self.fan, "mutation($id: ID!) { saveContent(contentId: $id) { saved } }", self.vars)
+        row = self.read()
+        self.assertEqual(row["likeCount"], 1)
+        self.assertTrue(row["isLikedByViewer"])
+        self.assertTrue(row["isSavedByViewer"])
+
+        gql(self.fan, "mutation($id: ID!) { unlikeContent(contentId: $id) { liked } }", self.vars)
+        row = self.read()
+        self.assertEqual(row["likeCount"], 0)
+        self.assertFalse(row["isLikedByViewer"])
+
+    def test_share_is_counted_and_returned(self):
+        doc = "mutation($id: ID!) { recordContentShare(contentId: $id) { shareCount } }"
+        data, errors = gql(self.fan, doc, self.vars)
+        self.assertEqual(errors, [])
+        self.assertEqual(data["recordContentShare"]["shareCount"], 1)
+        gql(self.fan, doc, self.vars)
+        self.assertEqual(self.read()["shareCount"], 2)
+
+    def test_hidden_counts_are_withheld_from_others(self):
+        self.content.hide_engagement_counts = True
+        self.content.share_count = 5
+        self.content.save()
+        self.assertEqual(self.read()["shareCount"], 0)

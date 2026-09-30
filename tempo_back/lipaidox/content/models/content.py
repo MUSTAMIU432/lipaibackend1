@@ -74,6 +74,9 @@ class Content(TenantAwareModel):
     # Engagement Counters (Stored collectively for scale)
     view_count = models.IntegerField(default=0)
     like_count = models.IntegerField(default=0)
+    # Every completed share (copy link, share sheet, DM) — not deduplicated per
+    # user: sharing the same post twice reaches two audiences.
+    share_count = models.IntegerField(default=0)
     comment_count = models.IntegerField(default=0)
     purchase_count = models.IntegerField(default=0)
     total_revenue = models.DecimalField(max_digits=14, decimal_places=4, default=0.0000)
