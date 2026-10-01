@@ -770,9 +770,14 @@ GOOGLE_OAUTH_CLIENT_ID = (
 # Android OAuth client (package + signing SHA-1). Native sign-in never puts it in `aud`
 # (that is the Web client above) — it is `azp` — but accepting it is harmless and covers
 # a client configured without `webClientId`. Render names this plain `CLIENT_ID`.
+# The app's Android client — the newest one, created 2026-10-01; `CLIENT_ID` on
+# Render overrides it. Same project (mustanet-509717) as the Web client above,
+# which is what Google requires for native sign-in to work at all.
+_APP_GOOGLE_ANDROID_CLIENT_ID = "289138513882-drmsg3bt2ub7g4iirg40h75gc2ootlo5.apps.googleusercontent.com"
 GOOGLE_OAUTH_ANDROID_CLIENT_ID = (
     config("GOOGLE_OAUTH_ANDROID_CLIENT_ID", default="").strip()
     or config("CLIENT_ID", default="").strip()
+    or _APP_GOOGLE_ANDROID_CLIENT_ID
 )
 # Optional: comma-separated OAuth client IDs to accept in addition to the primary (e.g.
 # second Web client or env-specific client). Never put service account client emails here.
