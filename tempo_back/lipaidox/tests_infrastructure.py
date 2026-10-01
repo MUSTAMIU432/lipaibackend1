@@ -282,3 +282,30 @@ class EmailBackendSelectionTests(SimpleTestCase):
     def test_resend_kept_when_no_smtp_to_fall_back_to(self):
         backend = self.backend_for(RESEND_API_KEY="re_x", DEFAULT_FROM_EMAIL="me@gmail.com")
         self.assertEqual(backend, "anymail.backends.resend.EmailBackend")
+
+
+class BackgroundEagerTaskTests(SimpleTestCase):
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, BACKGROUND_EAGER_TASKS=True)
+    def test_eager_task_runs_on_a_thread_not_in_the_request(self):
+        import threading
+
+        done = threading.Event()
+        seen = {}
+        task = mock.Mock(name="task")
+        task.name = "t"
+
+        def apply(args, kwargs):
+            seen["thread"] = threading.current_thread().name
+            done.set()
+
+        task.apply.side_effect = apply
+        tasking.enqueue(task, "a")
+        self.assertTrue(done.wait(5))
+        self.assertEqual(seen["thread"], "task:t")
+        task.apply_async.assert_not_called()
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, BACKGROUND_EAGER_TASKS=False)
+    def test_disabled_keeps_tasks_inline(self):
+        task = mock.Mock(name="task")
+        tasking.enqueue(task, "a")
+        task.apply_async.assert_called_once()

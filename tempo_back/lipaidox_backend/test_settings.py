@@ -13,3 +13,5 @@ CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 CELERY_BROKER_URL = ""
 CELERY_RESULT_BACKEND = None
 CELERY_TASK_ALWAYS_EAGER = True
+# Tests assert on task side effects right after the call — keep them inline.
+BACKGROUND_EAGER_TASKS = False

@@ -354,6 +354,9 @@ CELERY_BROKER_URL = (config("CELERY_BROKER_URL", default="") or "").strip()
 CELERY_RESULT_BACKEND = (config("CELERY_RESULT_BACKEND", default="") or "").strip() or None
 # No broker → run tasks synchronously in-process (the pre-Celery behaviour).
 CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=not CELERY_BROKER_URL, cast=bool)
+# With eager tasks (no broker), run them on a background thread rather than
+# inside the request that queued them — see lipaidox/tasking.py.
+BACKGROUND_EAGER_TASKS = config("BACKGROUND_EAGER_TASKS", default=CELERY_TASK_ALWAYS_EAGER, cast=bool)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 # Task modules outside INSTALLED_APPS, which autodiscovery can't see.
