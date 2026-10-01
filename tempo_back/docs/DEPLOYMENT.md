@@ -54,7 +54,8 @@ Required/important variables for production:
 | `NBC_API_KEY`, `NBC_API_BASE`, `NBC_CURRENCY`, `NBC_SETTLEMENT_CURRENCY`, `NBC_USD_TO_TZS`, `NBC_REDIRECT_URL` | NBC/Haminass Pay gateway |
 | `EMAIL_*` / `RESEND_API_KEY` / `DEFAULT_FROM_EMAIL` | email delivery (Render blocks outbound SMTP ports — prefer Resend HTTP API) |
 | `FRONTEND_ORIGIN`, `PASSWORD_RESET_FRONTEND_PATH`, `PASSWORD_RESET_*` | password-reset links/OTP |
-| `GOOGLE_OAUTH_*`, `FIREBASE_*` | social sign-in |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | Google sign-in (web + mobile send Firebase ID tokens to `googleAuth`). Private key: paste the JSON's `private_key`; literal `\n` is fine. Check with `GET /health/` → `auth.firebase.adminReady` |
+| `GOOGLE_OAUTH_*` | legacy raw-Google-token sign-in from mobile builds < 1.2.0 (code defaults suffice) |
 | `GROK_API_KEY`, `MAP_API`, `GOOGLE_TRANSLATE_API_KEY` | AI/discover services |
 | `GUNICORN_TIMEOUT` / `GUNICORN_GRACEFUL_TIMEOUT` / `GUNICORN_KEEPALIVE` / `WEB_CONCURRENCY` | gunicorn tuning (defaults 300/300/30/2 — uploads need the long timeout) |
 | `MEDIA_ROOT` | Render Disk mount (e.g. `/var/data/media`) |

@@ -82,6 +82,25 @@ def _auth() -> dict:
         "emailSmtpHost": settings.EMAIL_HOST or None,
         "emailSmtpLoginConfigured": bool(settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD),
         "emailVerificationInlineOtp": bool(settings.EMAIL_VERIFICATION_INLINE_OTP),
+        "firebase": _firebase(),
+    }
+
+
+def _firebase() -> dict:
+    """Whether Firebase sign-in can verify tokens — project id and credential source, never the key."""
+    from lipaidox.auth.googleOuth.googleOuth import FirebaseAuthService
+
+    svc = FirebaseAuthService()
+    try:
+        svc.ensure_initialized()
+    except Exception as exc:  # never let health checks raise
+        return {"projectId": settings.FIREBASE_PROJECT_ID or None, "adminReady": False, "error": type(exc).__name__}
+    return {
+        "projectId": settings.FIREBASE_PROJECT_ID or None,
+        "adminReady": svc.initialized,
+        # env | file | path | adc — which credential source Admin started with.
+        "credentials": svc.credential_source,
+        "checkRevoked": bool(settings.FIREBASE_CHECK_REVOKED),
     }
 
 

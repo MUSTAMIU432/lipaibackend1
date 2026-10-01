@@ -1,6 +1,9 @@
 # Firebase / Google service account keys (never commit)
 firebase-service-account.json
 *-service-account*.json
+# Firebase Console's default key download name, e.g. lipaidox-platform-firebase-adminsdk-ab12c-0123456789.json
+*firebase-adminsdk*.json
+secrets/
 .env
 *.local.json
 

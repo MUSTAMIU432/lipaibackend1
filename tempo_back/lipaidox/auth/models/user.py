@@ -19,6 +19,10 @@ class User(AbstractUser):
     # Social Sign in
     auth_provider = models.CharField(max_length=20, default="local")
     google_id = models.CharField(max_length=255, blank=True, null=True)
+    # Firebase Auth uid — a different value from the Google account id in
+    # `google_id`. Kept separately so a Firebase sign-in and a legacy Google-token
+    # sign-in of the same Google account resolve to the same user.
+    firebase_uid = models.CharField(max_length=128, blank=True, null=True)
     apple_id = models.CharField(max_length=255, blank=True, null=True)
 
     # Staff / workspace context
@@ -42,6 +46,11 @@ class User(AbstractUser):
                 fields=["google_id", "tenant"],
                 name="unique_google_per_tenant",
                 condition=models.Q(google_id__isnull=False),
+            ),
+            models.UniqueConstraint(
+                fields=["firebase_uid", "tenant"],
+                name="unique_firebase_uid_per_tenant",
+                condition=models.Q(firebase_uid__isnull=False),
             ),
             models.UniqueConstraint(
                 fields=["apple_id", "tenant"],

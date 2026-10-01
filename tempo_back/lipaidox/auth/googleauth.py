@@ -7,6 +7,9 @@ Sign-in for GraphQL ``googleAuth`` — re-export (Firebase ID tokens + optional 
 
 from .googleOuth.googleOuth import (
     FirebaseAuthService,
+    FirebaseTokenError,
+    firebase_google_identity,
+    firebase_sign_in_provider,
     normalize_google_id_token,
     peek_google_jwt_issuer,
     verify_google_credential_jwt,
@@ -14,6 +17,9 @@ from .googleOuth.googleOuth import (
 
 __all__ = [
     "FirebaseAuthService",
+    "FirebaseTokenError",
+    "firebase_google_identity",
+    "firebase_sign_in_provider",
     "normalize_google_id_token",
     "peek_google_jwt_issuer",
     "verify_google_credential_jwt",

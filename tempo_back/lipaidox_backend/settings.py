@@ -97,6 +97,16 @@ if _render_host and _render_host not in ALLOWED_HOSTS:
 if ".onrender.com" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(".onrender.com")
 
+# Behind Render's TLS-terminating proxy: trust its X-Forwarded-Proto so Django
+# knows requests arrived over HTTPS, and keep the (admin-only) session/CSRF
+# cookies off plain HTTP. No SECURE_SSL_REDIRECT — Render already redirects
+# public traffic, and its health checks reach the app over internal HTTP.
+# API auth is the Bearer header, never cookies.
+if _render_host and not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
 # In DEBUG, accept any Host header so LAN-IP access from a physical device works
 # without listing every IP. Production must set ALLOWED_HOSTS explicitly.
 if DEBUG:
@@ -826,13 +836,16 @@ GOOGLE_MAPS_API_KEY = config("MAP_API", default="").strip()
 # Verifies **Firebase Auth ID tokens** (issuer securetoken.google.com). Independent of
 # GOOGLE_OAUTH_CLIENT_ID (that is only for optional GIS / non-Firebase JWT clients).
 #
-# Include in `.env`:
-#   FIREBASE_PROJECT_ID              — Firebase / GCP project id (identifier, not secret)
-#   FIREBASE_SERVICE_ACCOUNT_PATH  — path to downloaded JSON key file (SECRET; not in git)
+# Production (Render) — three env vars, no JSON file on disk:
+#   FIREBASE_PROJECT_ID     — Firebase project id, e.g. lipaidox-platform (public identifier)
+#   FIREBASE_CLIENT_EMAIL   — service account `client_email` (secret-ish; keep server side)
+#   FIREBASE_PRIVATE_KEY    — service account `private_key` (SECRET); literal \n allowed
 #
-# Optional dev fallback: gitignored JSON next to ``authjson.py``, or
-# FIREBASE_SERVICE_ACCOUNT_B64 / FIREBASE_SERVICE_ACCOUNT_JSON in ``.env``.
+# Local development may instead point at a gitignored key file:
+#   FIREBASE_SERVICE_ACCOUNT_PATH — path to the downloaded JSON key (SECRET; never in git)
+# or use FIREBASE_SERVICE_ACCOUNT_B64 / FIREBASE_SERVICE_ACCOUNT_JSON.
 # See ``lipaidox.auth.googleOuth.authjson``.
+# A key whose project differs from FIREBASE_PROJECT_ID is ignored (logged as an error).
 #
 # Resolve the service account file first, then fill FIREBASE_PROJECT_ID from JSON if unset
 # (see ``_parse_firebase_service_account_supplement``).
@@ -894,3 +907,15 @@ FIREBASE_ALLOW_APPLICATION_DEFAULT_CREDENTIALS = config(
     default=False,
     cast=bool,
 )
+FIREBASE_CLIENT_EMAIL = config("FIREBASE_CLIENT_EMAIL", default="").strip()
+# Newline normalisation (literal "\n", surrounding quotes) happens where the key is
+# used — `googleOuth.normalize_private_key` — so the raw value never gets logged here.
+FIREBASE_PRIVATE_KEY = config("FIREBASE_PRIVATE_KEY", default="")
+# Reject ID tokens revoked in Firebase (sign-out-everywhere, password change) and
+# tokens of disabled/deleted Firebase users. Costs one Admin API call per sign-in
+# (not per request — requests use our own JWT), so it stays on outside tests.
+FIREBASE_CHECK_REVOKED = config("FIREBASE_CHECK_REVOKED", default=True, cast=bool)
+FIREBASE_CLOCK_SKEW_SECONDS = config("FIREBASE_CLOCK_SKEW_SECONDS", default=10, cast=int)
+# `test-google-token` stand-in for local UI work. Needs DEBUG *and* this flag, so a
+# production box that accidentally runs with DEBUG=True still can't be signed into with it.
+FIREBASE_ALLOW_TEST_TOKENS = DEBUG and config("FIREBASE_ALLOW_TEST_TOKENS", default=False, cast=bool)

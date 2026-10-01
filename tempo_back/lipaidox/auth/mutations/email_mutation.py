@@ -223,7 +223,7 @@ class EmailMutation:
             raise Exception(err)
 
         uid = str(claims.get("uid") or "")
-        if uid != str(request.user.pk):
+        if uid not in (str(request.user.pk), request.user.firebase_uid or ""):
             raise Exception("Firebase account does not match the logged-in user.")
 
         token_email = (claims.get("email") or "").strip().lower()

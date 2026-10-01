@@ -9,6 +9,7 @@ import jwt
 from datetime import datetime, timedelta, timezone
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
 
 ACCESS_TOKEN_LIFETIME = timedelta(hours=1)
@@ -57,16 +58,20 @@ def authenticate_request(request) -> None:
     """
     from lipaidox.auth.models import User  # local import to avoid circular
 
-    auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-    if not auth_header.startswith("Bearer "):
+    # Missing, malformed ("Token x", "Bearer" alone), invalid or expired → the request
+    # stays anonymous and protected resolvers answer "Authentication required".
+    scheme, _, token = request.META.get("HTTP_AUTHORIZATION", "").strip().partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token:
         return
 
-    token = auth_header.split(" ", 1)[1]
     payload = verify_access_token(token)
-    if not payload:
+    if not payload or not payload.get("user_id"):
         return
 
     try:
-        request.user = User.objects.get(id=payload["user_id"])
-    except User.DoesNotExist:
-        pass
+        user = User.objects.get(id=payload["user_id"])
+    except (User.DoesNotExist, ValueError, ValidationError):
+        return
+    if user.is_active:
+        request.user = user
