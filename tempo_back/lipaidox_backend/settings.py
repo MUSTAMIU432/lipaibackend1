@@ -887,7 +887,11 @@ if FIREBASE_SERVICE_ACCOUNT_PATH:
         FIREBASE_SERVICE_ACCOUNT_PATH
     )
 
-FIREBASE_PROJECT_ID = config("FIREBASE_PROJECT_ID", default="").strip()
+# Render may hold the key's fields under their JSON names (`project_id`,
+# `client_email`, `private_key`) instead of the FIREBASE_* names; accept both.
+FIREBASE_PROJECT_ID = (
+    config("FIREBASE_PROJECT_ID", default="").strip() or config("project_id", default="").strip()
+)
 if not FIREBASE_PROJECT_ID:
     FIREBASE_PROJECT_ID = (_FIREBASE_SA_SUPPLEMENT.get("project_id") or "").strip()
 
@@ -907,10 +911,12 @@ FIREBASE_ALLOW_APPLICATION_DEFAULT_CREDENTIALS = config(
     default=False,
     cast=bool,
 )
-FIREBASE_CLIENT_EMAIL = config("FIREBASE_CLIENT_EMAIL", default="").strip()
+FIREBASE_CLIENT_EMAIL = (
+    config("FIREBASE_CLIENT_EMAIL", default="").strip() or config("client_email", default="").strip()
+)
 # Newline normalisation (literal "\n", surrounding quotes) happens where the key is
 # used — `googleOuth.normalize_private_key` — so the raw value never gets logged here.
-FIREBASE_PRIVATE_KEY = config("FIREBASE_PRIVATE_KEY", default="")
+FIREBASE_PRIVATE_KEY = config("FIREBASE_PRIVATE_KEY", default="") or config("private_key", default="")
 # Reject ID tokens revoked in Firebase (sign-out-everywhere, password change) and
 # tokens of disabled/deleted Firebase users. Costs one Admin API call per sign-in
 # (not per request — requests use our own JWT), so it stays on outside tests.
