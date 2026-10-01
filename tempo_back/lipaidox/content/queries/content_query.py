@@ -4,12 +4,14 @@ from ..models import Content, ContentSeries, ContentTag
 from ..schema.content_schema import ContentType, ContentSeriesType, ContentTagType
 from multitenant.utils.tenant_context import get_current_tenant
 from lipaidox.auth.permissions import require_creator
+from lipaidox.content.scheduling import publish_due_scheduled
 
 @strawberry.type
 class ContentQuery:
     @strawberry.field
     @require_creator
     def my_content(self, info: strawberry.types.Info) -> List[ContentType]:
+        publish_due_scheduled()
         user = info.context.request.user
         content_items = Content.objects.filter(creator__user=user).select_related('series', 'access_rules').order_by('-created_at')
         return [ContentType.from_model(c) for c in content_items]
@@ -18,6 +20,7 @@ class ContentQuery:
     @require_creator
     def my_drafts(self, info: strawberry.types.Info) -> List[ContentType]:
         """Return all content with status draft or scheduled, newest first."""
+        publish_due_scheduled()
         user = info.context.request.user
         items = (
             Content.objects
@@ -51,6 +54,7 @@ class ContentQuery:
 
     @strawberry.field
     def content_by_id(self, id: strawberry.ID) -> Optional[ContentType]:
+        publish_due_scheduled()
         try:
             content = (
                 Content.objects.select_related('creator')
@@ -83,6 +87,9 @@ class ContentQuery:
         A recommendation engine can later replace this ordering/selection without
         the client changing — it already asks for a window, not the whole feed.
         """
+        # Overdue scheduled posts go live before the feed is read — there may
+        # be no worker to do it (see content/scheduling.py).
+        publish_due_scheduled()
         tenant = get_current_tenant()
         queryset = (
             Content.objects.filter(tenant=tenant, status='published')
@@ -106,6 +113,7 @@ class ContentQuery:
         public feed and filter it client-side, which costs a full scan per
         profile view and silently truncates once the feed is paginated.
         """
+        publish_due_scheduled()
         tenant = get_current_tenant()
         queryset = (
             Content.objects.filter(

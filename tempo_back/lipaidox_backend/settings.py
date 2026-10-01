@@ -407,6 +407,13 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60.0,
         "options": {"expires": 55},
     },
+    # Scheduled posts go live on time even when nobody opens the feed. The
+    # feed queries also do this lazily, so a missing worker never strands one.
+    "publish-due-scheduled-content": {
+        "task": "lipaidox.content.publish_due_scheduled",
+        "schedule": 60.0,
+        "options": {"expires": 55},
+    },
 }
 
 # -----------------------------
