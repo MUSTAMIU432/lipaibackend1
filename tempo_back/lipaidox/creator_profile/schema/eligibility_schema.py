@@ -209,6 +209,21 @@ def compute_creator_eligibility(user) -> CreatorEligibilityType:
     )
 
 
+def _verification_hint(profile) -> str:
+    """Where the creator's identity verification stands, in one line."""
+    from lipaidox.kyc.models.kyc_status import KYCOverallStatus, KYCStatus
+
+    kyc = KYCStatus.objects.filter(creator=profile).first() if profile is not None else None
+    status = kyc.overall_status if kyc else KYCOverallStatus.NOT_SUBMITTED
+    if status in (KYCOverallStatus.PENDING, KYCOverallStatus.AI_PROCESSING, KYCOverallStatus.ADMIN_REVIEW):
+        return "Verification submitted — under review"
+    if status in (KYCOverallStatus.RESUBMISSION_REQUESTED, KYCOverallStatus.REJECTED):
+        return "Verification needs changes — tap to resubmit"
+    if status == KYCOverallStatus.PERMANENTLY_REJECTED:
+        return "Verification was declined — contact support"
+    return "Verify your identity to get the badge"
+
+
 def compute_subscription_eligibility(user) -> CreatorEligibilityType:
     """The Subscriptions setup wizard's own, smaller eligibility check —
     three of the nine general requirements, the ones that actually gate
@@ -231,6 +246,7 @@ def compute_subscription_eligibility(user) -> CreatorEligibilityType:
         ProfileStatus.SUSPENDED, ProfileStatus.DEACTIVATED,
     )
     verified_met = bool(profile is not None and profile.is_verified)
+    verified_detail = None if verified_met else _verification_hint(profile)
 
     rows = [
         CreatorEligibilityRequirementType(
@@ -238,7 +254,7 @@ def compute_subscription_eligibility(user) -> CreatorEligibilityType:
             label="Account is verified",
             description="Your account carries Lipaidox's verification badge",
             met=verified_met,
-            detail=None if verified_met else "Apply for verification from your profile",
+            detail=verified_detail,
         ),
         CreatorEligibilityRequirementType(
             key="account_standing",

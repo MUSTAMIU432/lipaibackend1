@@ -69,6 +69,9 @@ class KYCStatusType:
     updatedAt: datetime
     currentDocument: Optional[VerificationDocumentType]
     businessDetail: Optional[BusinessVerificationType]
+    # Why a reviewer sent it back — shown to the creator so they know what to fix.
+    rejectionReason: Optional[str] = None
+    rejectionNote: Optional[str] = None
 
     @classmethod
     def from_model(cls, instance: KYCStatus):
@@ -82,7 +85,9 @@ class KYCStatusType:
             resubmissionCount=instance.resubmission_count,
             updatedAt=instance.updated_at,
             currentDocument=VerificationDocumentType.from_model(instance.current_document) if instance.current_document else None,
-            businessDetail=BusinessVerificationType.from_model(business) if business else None
+            businessDetail=BusinessVerificationType.from_model(business) if business else None,
+            rejectionReason=instance.get_rejection_reason_display() if instance.rejection_reason else None,
+            rejectionNote=instance.rejection_note,
         )
 
 @strawberry.input

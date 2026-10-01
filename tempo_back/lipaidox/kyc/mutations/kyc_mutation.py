@@ -74,6 +74,14 @@ class KYCMutation:
             
             if kyc_status.overall_status == KYCOverallStatus.PERMANENTLY_REJECTED:
                 raise Exception("You have been permanently rejected.")
+            # A second submission would knock an approved account back to
+            # "pending" — and its badge with it, from the creator's view.
+            if kyc_status.overall_status == KYCOverallStatus.APPROVED:
+                raise Exception("Your identity is already verified.")
+            resubmitting = kyc_status.overall_status in (
+                KYCOverallStatus.RESUBMISSION_REQUESTED,
+                KYCOverallStatus.REJECTED,
+            )
 
             # Validate Other requires a document name
             normalized_doc_type = _normalize_document_type(input.documentType)
@@ -98,6 +106,11 @@ class KYCMutation:
             kyc_status.kyc_type = KYCType.INDIVIDUAL
             kyc_status.overall_status = KYCOverallStatus.PENDING
             kyc_status.current_document = doc
+            if not kyc_status.first_submitted_at:
+                kyc_status.first_submitted_at = timezone.now()
+            if resubmitting:
+                kyc_status.resubmission_count += 1
+                kyc_status.last_resubmission_at = timezone.now()
             kyc_status.save()
             
         return KYCStatusType.from_model(kyc_status)
