@@ -140,7 +140,7 @@ GOOGLE_AUTH = "mutation($t: String!) { googleAuth(idToken: $t) { accessToken ref
 ME = "{ me { id email } }"
 
 
-class GoogleAuthFirebaseTests(TestCase):
+class GraphQLCase(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test", domain="firebase-tests.local")
         self.client = Client(HTTP_X_TENANT_ID=str(self.tenant.id))
@@ -152,12 +152,15 @@ class GoogleAuthFirebaseTests(TestCase):
         )
         return res.json()
 
+    def error(self, body):
+        return body["errors"][0]["message"]
+
+
+class GoogleAuthFirebaseTests(GraphQLCase):
+
     def google_auth(self, claims=None, side_effect=None):
         with mock.patch.object(FirebaseAuthService, "verify", return_value=claims, side_effect=side_effect):
             return self.gql(GOOGLE_AUTH, {"t": fake_firebase_jwt()})
-
-    def error(self, body):
-        return body["errors"][0]["message"]
 
     # ── account mapping ──────────────────────────────────────────────────────
 
@@ -259,3 +262,74 @@ class GoogleAuthFirebaseTests(TestCase):
             settings.JWT_SECRET_KEY, algorithm="HS256",
         )
         self.assertIsNone(self.gql(ME, HTTP_AUTHORIZATION=f"Bearer {expired}")["data"]["me"])
+
+
+SIGN_IN = """mutation($t: String!) { googleSignIn(idToken: $t) {
+  status email firstName lastName auth { accessToken tokenType } } }"""
+COMPLETE = """mutation($t: String!, $i: GoogleSignupInput!) {
+  completeGoogleSignup(idToken: $t, input: $i) { accessToken username email } }"""
+
+
+class GoogleSignupFlowTests(GraphQLCase):
+    """googleSignIn checks the email first; a new one goes through the sign-up form."""
+
+    def call(self, query, claims, variables=None):
+        with mock.patch.object(FirebaseAuthService, "verify", return_value=claims):
+            return self.gql(query, {"t": fake_firebase_jwt(), **(variables or {})})
+
+    def form(self, **over):
+        return {"i": {"username": "ann_x", "password": "Str0ng!Pass", "firstName": "Ann",
+                      "lastName": "Example", "dateOfBirth": "1995-04-02", **over}}
+
+    def test_new_email_requires_signup_and_creates_nothing(self):
+        res = self.call(SIGN_IN, firebase_claims())["data"]["googleSignIn"]
+        self.assertEqual(res["status"], "signup_required")
+        self.assertEqual((res["email"], res["firstName"], res["lastName"]), ("ann@example.com", "Ann", "Example"))
+        self.assertIsNone(res["auth"])
+        self.assertFalse(User.objects.filter(email="ann@example.com").exists())
+
+    def test_existing_google_user_is_signed_in(self):
+        User.objects.create(username="ann", email="ann@example.com", tenant=self.tenant,
+                            google_id="google-sub-1", auth_provider="google")
+        res = self.call(SIGN_IN, firebase_claims())["data"]["googleSignIn"]
+        self.assertEqual(res["status"], "signed_in")
+        self.assertEqual(res["auth"]["tokenType"], "Bearer")
+
+    def test_password_account_conflict_is_reported_at_sign_in(self):
+        User.objects.create_user(username="ann", email="ann@example.com", password="Secret!234", tenant=self.tenant)
+        self.assertIn("already registered with a password", self.error(self.call(SIGN_IN, firebase_claims())))
+
+    def test_completing_the_form_creates_linked_verified_account_with_password(self):
+        body = self.call(COMPLETE, firebase_claims(), self.form())
+        out = body["data"]["completeGoogleSignup"]
+        self.assertEqual((out["username"], out["email"]), ("ann_x", "ann@example.com"))
+        user = User.objects.get(email="ann@example.com")
+        self.assertEqual((user.google_id, user.firebase_uid), ("google-sub-1", "fb-uid-1"))
+        self.assertTrue(user.email_verified)
+        self.assertTrue(user.check_password("Str0ng!Pass"))
+        self.assertEqual(str(user.date_of_birth), "1995-04-02")
+        # Afterwards the same Google account signs straight in.
+        self.assertEqual(self.call(SIGN_IN, firebase_claims())["data"]["googleSignIn"]["status"], "signed_in")
+
+    def test_email_comes_from_token_not_the_form(self):
+        self.call(COMPLETE, firebase_claims(email="real@example.com"), self.form())
+        self.assertTrue(User.objects.filter(email="real@example.com").exists())
+
+    def test_form_rules_match_normal_signup(self):
+        User.objects.create(username="taken", email="t@example.com", tenant=self.tenant)
+        self.assertIn("already taken", self.error(self.call(COMPLETE, firebase_claims(), self.form(username="taken"))))
+        self.assertIn("eligible", self.error(self.call(COMPLETE, firebase_claims(), self.form(dateOfBirth="2015-01-01"))))
+        self.assertTrue(self.error(self.call(COMPLETE, firebase_claims(), self.form(password="short"))))
+        self.assertFalse(User.objects.filter(email="ann@example.com").exists())
+
+    def test_double_submit_signs_into_the_same_account(self):
+        self.call(COMPLETE, firebase_claims(), self.form())
+        again = self.call(COMPLETE, firebase_claims(), self.form(username="other_name"))
+        self.assertEqual(again["data"]["completeGoogleSignup"]["username"], "ann_x")
+        self.assertEqual(User.objects.filter(email="ann@example.com").count(), 1)
+
+    def test_rejected_token_blocks_completion(self):
+        with mock.patch.object(FirebaseAuthService, "verify", side_effect=FirebaseTokenError("Your sign-in expired. Please sign in again.")):
+            body = self.gql(COMPLETE, {"t": fake_firebase_jwt(), **self.form()})
+        self.assertIn("expired", self.error(body))
+        self.assertFalse(User.objects.filter(email="ann@example.com").exists())

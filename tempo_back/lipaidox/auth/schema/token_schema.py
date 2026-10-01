@@ -58,3 +58,20 @@ class AuthPayload:
     last_name: str = ""
     requires_two_factor: bool = False
     challenge_token: Optional[str] = None
+
+
+@strawberry.type
+class GoogleSignInResult:
+    """
+    Outcome of ``googleSignIn``.
+
+    ``status == "signed_in"``: this Google account already has a Lipaidox account; ``auth`` holds
+    its tokens. ``status == "signup_required"``: the email is new — nothing was created; the app
+    shows the sign-up form prefilled with ``email`` / ``first_name`` / ``last_name`` and finishes
+    with ``completeGoogleSignup``.
+    """
+    status: str
+    auth: Optional[AuthPayload] = None
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None

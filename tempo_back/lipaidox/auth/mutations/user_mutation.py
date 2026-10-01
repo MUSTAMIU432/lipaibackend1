@@ -10,8 +10,15 @@ from django.db import transaction
 from django.utils import timezone
 
 from ..models import User, RefreshToken
-from ..schema.user_schema import UserType, UserInput, UserUpdateInput, UserSelfUpdateInput, BecomeCreatorInput
-from ..schema.token_schema import AuthPayload, AuthTokenType
+from ..schema.user_schema import (
+    BecomeCreatorInput,
+    GoogleSignupInput,
+    UserInput,
+    UserSelfUpdateInput,
+    UserType,
+    UserUpdateInput,
+)
+from ..schema.token_schema import AuthPayload, AuthTokenType, GoogleSignInResult
 from ..jwt_auth import (
     generate_access_token,
     generate_refresh_token,
@@ -158,6 +165,129 @@ def _remember_google_ids(user: User, *, google_sub: str, firebase_uid: Optional[
             fields.append("google_id")
     if fields:
         user.save(update_fields=fields)
+
+
+def _validate_signup_birthdate(dob) -> None:
+    """16+ age gate shared by every sign-up path."""
+    if dob is None:
+        return
+    today = timezone.localdate()
+    if dob > today:
+        raise Exception("Date of birth cannot be in the future.")
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    if age < 16:
+        raise Exception("Your age is not eligible to use this app.")
+
+
+def _signup_role(raw: Optional[str]) -> str:
+    if raw is None or not str(raw).strip():
+        return UserRoles.FAN
+    role = str(raw).strip().lower()
+    if role not in (UserRoles.FAN, UserRoles.CREATOR):
+        raise Exception(
+            f"Invalid role for Google sign-up. Must be '{UserRoles.FAN}' or '{UserRoles.CREATOR}'."
+        )
+    return role
+
+
+def _verified_google_identity(id_token: str) -> dict:
+    """
+    Verify a Google sign-in token and return only verified facts:
+    ``google_sub``, ``firebase_uid`` (None for legacy tokens), ``email``, ``given``, ``family``.
+
+    **Firebase** ID tokens (web, mobile ≥ 1.2.0) are checked by Firebase Admin — signature,
+    expiry, project, revocation, disabled user. **Legacy** raw Google ID tokens (mobile < 1.2.0)
+    are checked against the configured Google OAuth client IDs. Nothing the client says about
+    uid/email is trusted.
+    """
+    normalized = normalize_google_id_token(id_token)
+    if not normalized:
+        raise Exception("Missing Google credential.")
+
+    firebase_uid = None
+    # Firebase ID tokens use https://securetoken.google.com/<projectId> — never run
+    # them through Google-token verification (wrong audience, misleading errors).
+    if "securetoken.google.com" in (peek_google_jwt_issuer(normalized) or ""):
+        try:
+            claims = FirebaseAuthService().verify(normalized)
+        except FirebaseTokenError as e:
+            raise Exception(str(e)) from e
+        if firebase_sign_in_provider(claims) != "google.com":
+            raise Exception("This sign-in did not come from Google. Use Continue with Google.")
+        firebase_uid = claims.get("uid")
+        google_sub = firebase_google_identity(claims)
+        if not firebase_uid or not google_sub:
+            raise Exception("Invalid Firebase account response.")
+        given, family = _split_display_name(claims.get("name"))
+    else:
+        try:
+            claims = verify_google_credential_jwt(normalized)
+        except ValueError as e:
+            raise Exception(str(e)) from e
+        google_sub = claims.get("sub")
+        if not google_sub:
+            raise Exception("Invalid Google account response.")
+        given = (claims.get("given_name") or "")[:150]
+        family = (claims.get("family_name") or "")[:150]
+
+    email_raw = claims.get("email")
+    if not email_raw:
+        raise Exception("Google did not return an email for this account.")
+    if not claims.get("email_verified", False):
+        raise Exception("Your Google email must be verified before you can use it to sign in.")
+    return {
+        "google_sub": google_sub,
+        "firebase_uid": firebase_uid,
+        "email": normalize_signup_email(email_raw),
+        "given": given,
+        "family": family,
+    }
+
+
+def _existing_google_account(tenant, identity: dict) -> Optional[User]:
+    """
+    The local account this Google identity signs into, or None when the email is new.
+    Call inside ``transaction.atomic()``.
+
+    Raises the user-facing conflict when the email belongs to an account that
+    signs in another way (password, Apple, a different Google account).
+    """
+    google_sub, firebase_uid = identity["google_sub"], identity["firebase_uid"]
+    user = _find_google_user(tenant, google_sub=google_sub, firebase_uid=firebase_uid)
+    if user:
+        _remember_google_ids(user, google_sub=google_sub, firebase_uid=firebase_uid)
+        return user
+
+    existing = find_user_by_email_tenant(identity["email"], tenant.id)
+    if not existing:
+        return None
+    if existing.google_id or existing.firebase_uid:
+        # Found by email but not by any id of this Google account.
+        raise Exception(
+            "This email is linked to a different Google account. "
+            "Use that Google account or contact support."
+        )
+    if existing.apple_id:
+        raise Exception("This email is already linked to Apple sign-in. Use that method to continue.")
+    if existing.has_usable_password():
+        raise Exception(
+            "This email is already registered with a password. Sign in with your "
+            "username and password, or use Forgot password."
+        )
+    # An account with neither a password nor a social link (e.g. created by an
+    # admin): the verified Google email proves ownership, so link it.
+    existing.auth_provider = "google"
+    existing.email_verified = True
+    fields = ["auth_provider", "email_verified"]
+    if identity["given"]:
+        existing.first_name = identity["given"]
+        fields.append("first_name")
+    if identity["family"]:
+        existing.last_name = identity["family"]
+        fields.append("last_name")
+    existing.save(update_fields=fields)
+    _remember_google_ids(existing, google_sub=google_sub, firebase_uid=firebase_uid)
+    return existing
 
 
 @strawberry.type
@@ -339,112 +469,104 @@ class UserMutation:
         signup_role: Optional[str] = None,
     ) -> AuthPayload:
         """
-        Sign in or register with Google; returns this backend's own JWT pair.
+        Sign in or register with Google in one step; returns this backend's JWT pair.
 
-        **Firebase modality** (web and mobile ≥ 1.2.0): ``id_token`` is a Firebase ID
-        token from a Google sign-in. It is verified with Firebase Admin — signature,
-        expiry, project, revocation, disabled user — and only the verified claims are
-        used. Nothing the client says about uid/email is trusted.
-
-        **Legacy modality** (mobile < 1.2.0): a raw Google ID token, verified against
-        the configured Google OAuth client IDs.
+        A new email gets an account straight away (username from the email, no
+        password). The mobile app uses ``googleSignIn`` + ``completeGoogleSignup``
+        instead, which sends new users through the sign-up form first.
         """
         tenant = get_current_tenant()
-
-        normalized = normalize_google_id_token(id_token)
-        if not normalized:
-            raise Exception("Missing Google credential.")
-
-        firebase_uid = None
-        # Firebase ID tokens use https://securetoken.google.com/<projectId> — never run
-        # them through Google-token verification (wrong audience, misleading errors).
-        if "securetoken.google.com" in (peek_google_jwt_issuer(normalized) or ""):
-            try:
-                claims = FirebaseAuthService().verify(normalized)
-            except FirebaseTokenError as e:
-                raise Exception(str(e)) from e
-            if firebase_sign_in_provider(claims) != "google.com":
-                raise Exception("This sign-in did not come from Google. Use Continue with Google.")
-            firebase_uid = claims.get("uid")
-            google_sub = firebase_google_identity(claims)
-            if not firebase_uid or not google_sub:
-                raise Exception("Invalid Firebase account response.")
-            given, family = _split_display_name(claims.get("name"))
-        else:
-            try:
-                claims = verify_google_credential_jwt(normalized)
-            except ValueError as e:
-                raise Exception(str(e)) from e
-            google_sub = claims.get("sub")
-            if not google_sub:
-                raise Exception("Invalid Google account response.")
-            given = (claims.get("given_name") or "")[:150]
-            family = (claims.get("family_name") or "")[:150]
-
-        email_raw = claims.get("email")
-        if not email_raw:
-            raise Exception("Google did not return an email for this account.")
-        if not claims.get("email_verified", False):
-            raise Exception("Your Google email must be verified before you can use it to sign in.")
-        normalized_email = normalize_signup_email(email_raw)
-
-        role = UserRoles.FAN
-        if signup_role is not None and str(signup_role).strip():
-            sr = str(signup_role).strip().lower()
-            if sr not in (UserRoles.FAN, UserRoles.CREATOR):
-                raise Exception(
-                    f"Invalid role for Google sign-up. Must be '{UserRoles.FAN}' or '{UserRoles.CREATOR}'."
-                )
-            role = sr
+        identity = _verified_google_identity(id_token)
+        role = _signup_role(signup_role)
 
         with transaction.atomic():
-            user = _find_google_user(tenant, google_sub=google_sub, firebase_uid=firebase_uid)
+            user = _existing_google_account(tenant, identity)
             if user:
-                _remember_google_ids(user, google_sub=google_sub, firebase_uid=firebase_uid)
                 return _issue_auth_payload(info, user)
 
-            existing = find_user_by_email_tenant(normalized_email, tenant.id)
-            if existing:
-                if existing.google_id or existing.firebase_uid:
-                    # Found by email but not by any id of this Google account.
-                    raise Exception(
-                        "This email is linked to a different Google account. "
-                        "Use that Google account or contact support."
-                    )
-                if existing.apple_id:
-                    raise Exception(
-                        "This email is already linked to Apple sign-in. Use that method to continue."
-                    )
-                if existing.has_usable_password():
-                    raise Exception(
-                        "This email is already registered with a password. Sign in with your "
-                        "username and password, or use Forgot password."
-                    )
-                existing.auth_provider = "google"
-                existing.email_verified = True
-                if given:
-                    existing.first_name = given
-                if family:
-                    existing.last_name = family
-                existing.save(update_fields=["auth_provider", "email_verified", "first_name", "last_name"])
-                _remember_google_ids(existing, google_sub=google_sub, firebase_uid=firebase_uid)
-                return _issue_auth_payload(info, existing)
-
-            local_part = normalized_email.split("@", 1)[0]
-            username = _unique_username_for_tenant(local_part, tenant)
+            local_part = identity["email"].split("@", 1)[0]
             new_user = User(
-                username=username,
-                email=normalized_email,
+                username=_unique_username_for_tenant(local_part, tenant),
+                email=identity["email"],
                 tenant=tenant,
                 role=role,
                 auth_provider="google",
-                google_id=google_sub,
-                firebase_uid=firebase_uid,
+                google_id=identity["google_sub"],
+                firebase_uid=identity["firebase_uid"],
                 email_verified=True,
-                first_name=given,
-                last_name=family,
+                first_name=identity["given"],
+                last_name=identity["family"],
             )
             new_user.set_unusable_password()
+            new_user.save()
+            return _issue_auth_payload(info, new_user)
+
+    @strawberry.mutation
+    def google_sign_in(self, info: strawberry.types.Info, id_token: str) -> GoogleSignInResult:
+        """
+        First half of mobile Google sign-up/sign-in. Never creates an account.
+
+        Existing Google account → ``signed_in`` with tokens. New email → ``signup_required``
+        with the verified email and Google's name, for the app to prefill its sign-up form.
+        An email already registered another way raises the usual conflict message.
+        """
+        tenant = get_current_tenant()
+        identity = _verified_google_identity(id_token)
+        with transaction.atomic():
+            user = _existing_google_account(tenant, identity)
+            if user:
+                return GoogleSignInResult(status="signed_in", auth=_issue_auth_payload(info, user))
+        return GoogleSignInResult(
+            status="signup_required",
+            email=identity["email"],
+            first_name=identity["given"] or None,
+            last_name=identity["family"] or None,
+        )
+
+    @strawberry.mutation
+    def complete_google_signup(
+        self,
+        info: strawberry.types.Info,
+        id_token: str,
+        input: GoogleSignupInput,
+    ) -> AuthPayload:
+        """
+        Second half: create the account from the completed sign-up form.
+
+        The token is verified again — the email and Google ids come only from it,
+        never from the form. Same rules as ``createUser`` (username, password, 16+),
+        but the email is already verified by Google, so no email code follows.
+        """
+        tenant = get_current_tenant()
+        identity = _verified_google_identity(id_token)
+        role = _signup_role(input.role)
+        username = (input.username or "").strip()
+        if not username:
+            raise Exception("Please choose a username.")
+        validate_signup_password(input.password)
+        _validate_signup_birthdate(input.dateOfBirth)
+
+        with transaction.atomic():
+            user = _existing_google_account(tenant, identity)
+            if user:
+                # Already finished (e.g. a double tap) — just sign in.
+                return _issue_auth_payload(info, user)
+            if User.objects.filter(username=username, tenant=tenant).exists():
+                raise Exception("Username already taken.")
+            new_user = User(
+                username=username,
+                email=identity["email"],
+                tenant=tenant,
+                role=role,
+                auth_provider="google",
+                google_id=identity["google_sub"],
+                firebase_uid=identity["firebase_uid"],
+                email_verified=True,
+                first_name=((input.firstName or "").strip() or identity["given"])[:150],
+                last_name=((input.lastName or "").strip() or identity["family"])[:150],
+                date_of_birth=input.dateOfBirth,
+            )
+            new_user.set_password(input.password)
             new_user.save()
             return _issue_auth_payload(info, new_user)
 
@@ -475,14 +597,7 @@ class UserMutation:
 
         # Age gate (16+). Enforced here so a tampered frontend can't bypass it.
         dob = getattr(input, "dateOfBirth", None)
-        if dob is not None:
-            from datetime import date as _date
-            today = _date.today()
-            if dob > today:
-                raise Exception("Date of birth cannot be in the future.")
-            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-            if age < 16:
-                raise Exception("Your age is not eligible to use this app.")
+        _validate_signup_birthdate(dob)
 
         if email_already_registered(normalized_email, tenant.id):
             raise Exception(

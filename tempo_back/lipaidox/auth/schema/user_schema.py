@@ -66,6 +66,17 @@ class UserInput:
     dateOfBirth: Optional[date] = None
 
 @strawberry.input
+class GoogleSignupInput:
+    """The sign-up form a new Google user completes. Email is not here on purpose:
+    it comes only from the verified Firebase token."""
+    username: str
+    password: str
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    dateOfBirth: Optional[date] = None
+    role: Optional[str] = "fan"
+
+@strawberry.input
 class UserUpdateInput:
     email: Optional[str] = None
     role: Optional[str] = None
