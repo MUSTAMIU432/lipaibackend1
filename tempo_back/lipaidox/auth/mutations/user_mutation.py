@@ -504,24 +504,48 @@ class UserMutation:
     @strawberry.mutation
     def google_sign_in(self, info: strawberry.types.Info, id_token: str) -> GoogleSignInResult:
         """
-        First half of mobile Google sign-up/sign-in. Never creates an account.
+        Sign in or register with Google in one step. Never defers to a sign-up form.
 
-        Existing Google account → ``signed_in`` with tokens. New email → ``signup_required``
-        with the verified email and Google's name, for the app to prefill its sign-up form.
-        An email already registered another way raises the usual conflict message.
+        An existing Google account signs in. A new email is created here and now —
+        username from the email, role FAN, ``set_unusable_password()`` — and signed
+        into, which is what ``google_auth`` (the one-step web path) has always done.
+        The mobile app used to get ``signup_required`` and route the person through
+        the sign-up form first, which asked for a password and for terms Google had
+        already collected: the account then existed twice over, once without the
+        password the person was asked to invent and once with the Google identity
+        that actually signs them in.
+
+        So a Google account carries no password and cannot be signed into with one.
+        That is not a dead end: ``settings/change-password`` offers "Set up password"
+        to a Google account, behind an email OTP, and from then on the normal
+        password sign-in works for it too.
+
+        The 16+ age gate is the one thing a form was doing that this cannot, so a new
+        account is created without a date of birth and collects it in Edit profile.
+        ``complete_google_signup`` is kept for builds older than this change.
         """
         tenant = get_current_tenant()
         identity = _verified_google_identity(id_token)
+
         with transaction.atomic():
             user = _existing_google_account(tenant, identity)
-            if user:
-                return GoogleSignInResult(status="signed_in", auth=_issue_auth_payload(info, user))
-        return GoogleSignInResult(
-            status="signup_required",
-            email=identity["email"],
-            first_name=identity["given"] or None,
-            last_name=identity["family"] or None,
-        )
+            if not user:
+                local_part = identity["email"].split("@", 1)[0]
+                user = User(
+                    username=_unique_username_for_tenant(local_part, tenant),
+                    email=identity["email"],
+                    tenant=tenant,
+                    role=UserRoles.FAN,
+                    auth_provider="google",
+                    google_id=identity["google_sub"],
+                    firebase_uid=identity["firebase_uid"],
+                    email_verified=True,
+                    first_name=identity["given"],
+                    last_name=identity["family"],
+                )
+                user.set_unusable_password()
+                user.save()
+            return GoogleSignInResult(status="signed_in", auth=_issue_auth_payload(info, user))
 
     @strawberry.mutation
     def complete_google_signup(
@@ -687,6 +711,12 @@ class UserMutation:
             update_fields.append("phone_country_code")
 
         if input.date_of_birth is not None:
+            # The same 16+ gate every sign-up path enforces. This was unchecked
+            # here, which was harmless while a date of birth could only arrive at
+            # sign-up; now that a Google account is created without one and
+            # collects it in Edit profile, this is the only place the check runs
+            # for those accounts — so it has to be the same check, not none.
+            _validate_signup_birthdate(input.date_of_birth)
             user.date_of_birth = input.date_of_birth
             update_fields.append("date_of_birth")
 

@@ -271,7 +271,8 @@ COMPLETE = """mutation($t: String!, $i: GoogleSignupInput!) {
 
 
 class GoogleSignupFlowTests(GraphQLCase):
-    """googleSignIn checks the email first; a new one goes through the sign-up form."""
+    """googleSignIn creates the account itself. completeGoogleSignup is kept working
+    for builds older than that change, so both paths are covered here."""
 
     def call(self, query, claims, variables=None):
         with mock.patch.object(FirebaseAuthService, "verify", return_value=claims):
@@ -281,12 +282,32 @@ class GoogleSignupFlowTests(GraphQLCase):
         return {"i": {"username": "ann_x", "password": "Str0ng!Pass", "firstName": "Ann",
                       "lastName": "Example", "dateOfBirth": "1995-04-02", **over}}
 
-    def test_new_email_requires_signup_and_creates_nothing(self):
+    def test_new_email_is_created_and_signed_into_in_one_step(self):
         res = self.call(SIGN_IN, firebase_claims())["data"]["googleSignIn"]
-        self.assertEqual(res["status"], "signup_required")
-        self.assertEqual((res["email"], res["firstName"], res["lastName"]), ("ann@example.com", "Ann", "Example"))
-        self.assertIsNone(res["auth"])
-        self.assertFalse(User.objects.filter(email="ann@example.com").exists())
+        self.assertEqual(res["status"], "signed_in")
+        self.assertEqual(res["auth"]["tokenType"], "Bearer")
+
+        user = User.objects.get(email="ann@example.com")
+        # Username from the email, viewer role, and no password: the Google
+        # identity is the only way in until they set one in Settings.
+        self.assertEqual(user.username, "ann")
+        self.assertEqual(user.role, "fan")
+        self.assertFalse(user.has_usable_password())
+        self.assertEqual((user.google_id, user.firebase_uid), ("google-sub-1", "fb-uid-1"))
+        self.assertTrue(user.email_verified)
+        self.assertEqual((user.first_name, user.last_name), ("Ann", "Example"))
+        # No date of birth: the age gate is collected in Edit profile instead.
+        self.assertIsNone(user.date_of_birth)
+
+    def test_new_email_username_avoids_a_taken_one(self):
+        User.objects.create(username="ann", email="other@example.com", tenant=self.tenant)
+        self.call(SIGN_IN, firebase_claims())
+        self.assertEqual(User.objects.get(email="ann@example.com").username, "ann_1")
+
+    def test_signing_in_twice_does_not_create_a_second_account(self):
+        self.call(SIGN_IN, firebase_claims())
+        self.call(SIGN_IN, firebase_claims())
+        self.assertEqual(User.objects.filter(email="ann@example.com").count(), 1)
 
     def test_existing_google_user_is_signed_in(self):
         User.objects.create(username="ann", email="ann@example.com", tenant=self.tenant,

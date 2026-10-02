@@ -63,12 +63,16 @@ class AuthPayload:
 @strawberry.type
 class GoogleSignInResult:
     """
-    Outcome of ``googleSignIn``.
+    Outcome of ``googleSignIn``. One outcome, not two.
 
-    ``status == "signed_in"``: this Google account already has a Lipaidox account; ``auth`` holds
-    its tokens. ``status == "signup_required"``: the email is new — nothing was created; the app
-    shows the sign-up form prefilled with ``email`` / ``first_name`` / ``last_name`` and finishes
-    with ``completeGoogleSignup``.
+    ``status == "signed_in"`` with ``auth`` holding the tokens: this Google identity now has a
+    Lipaidox account — either it already had one, or it was just created from this token (username
+    from the email, role FAN, no password). There is no longer a ``signup_required`` status: the app
+    is never sent to a sign-up form for a Google identity, so it never has to invent a password or
+    re-accept terms Google already collected.
+
+    ``email`` / ``first_name`` / ``last_name`` are kept on the type for older clients that still ask
+    for them; the server no longer populates them.
     """
     status: str
     auth: Optional[AuthPayload] = None
