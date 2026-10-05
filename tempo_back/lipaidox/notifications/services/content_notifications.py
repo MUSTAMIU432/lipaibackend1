@@ -80,6 +80,14 @@ def _preference_allows(user):
         return True
 
 
+def _thumbnail_url(content):
+    """Cover image for the push, or None. Same pick the in-app list uses."""
+    from lipaidox.notifications.schema.notification_schema import _entity_thumbnail
+
+    url = _entity_thumbnail("content", str(content.id))
+    return url if url and url.startswith("https://") else None
+
+
 def notify_new_content_posted(content):
     """Announce a newly-published post to its creator's audience. Idempotent.
 
@@ -108,6 +116,8 @@ def notify_new_content_posted(content):
         from lipaidox.notifications.models.enums import NotificationType, NotificationPriority
 
         creator = content.creator
+        creator_user = getattr(creator, "user", None)
+        thumbnail = _thumbnail_url(content)
         creator_name = getattr(creator, "display_name", None) or getattr(creator, "username", "A creator")
 
         recipients = [u for u in _audience_users(creator) if _preference_allows(u)]
@@ -128,6 +138,7 @@ def notify_new_content_posted(content):
             action_url=action_url,
             action_text="View post",
             # entity_* lets the mobile client deep-link the tap straight to the post.
+            sender=creator_user,
             entity_type="content",
             entity_id=str(content.id),
             metadata={"contentId": str(content.id), "creatorName": creator_name},
@@ -135,14 +146,15 @@ def notify_new_content_posted(content):
 
         # Device push (best-effort).
         try:
-            from lipaidox.notifications.services.push import send_expo_push, active_tokens_for_users
+            from lipaidox.notifications.services.push import send_push, active_tokens_for_users
             tokens = active_tokens_for_users(recipients)
             if tokens:
-                send_expo_push(
+                send_push(
                     tokens,
                     title=title,
                     body=body,
                     data={"type": "new_content_posted", "entityId": str(content.id), "url": action_url},
+                    image=thumbnail,
                 )
         except Exception as exc:
             logger.warning("new-content push delivery failed: %s", exc)

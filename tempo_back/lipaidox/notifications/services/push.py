@@ -1,9 +1,15 @@
 """
-Expo push delivery.
+Device push delivery.
 
-The mobile app registers an Expo push token (``ExponentPushToken[...]``) via the
-``registerPushToken`` mutation; this module ships the notification to Expo's
-push service (https://exp.host/--/api/v2/push/send), which forwards to FCM/APNs.
+The mobile app registers a push token via the ``registerPushToken`` mutation.
+``send_push`` routes each token by shape:
+
+* ``ExponentPushToken[...]`` goes to Expo's push service
+  (https://exp.host/--/api/v2/push/send), which forwards to FCM/APNs.
+* Anything else is a raw FCM registration token (what the app registers on
+  Android since 1.3.0) and goes straight to Firebase Cloud Messaging through
+  the Firebase Admin app the backend already initialises for Google sign-in,
+  so no extra credential has to be uploaded anywhere.
 
 We keep it dependency-free (stdlib ``urllib``) so no new package is needed on the
 server, and we prune tokens Expo reports as ``DeviceNotRegistered`` so a stale
@@ -105,6 +111,77 @@ def _deactivate(tokens):
         PushToken.objects.filter(token__in=tokens).update(is_active=False)
     except Exception as exc:
         logger.warning("Failed to deactivate dead push tokens: %s", exc)
+
+
+# Android notification channel the app creates on launch; must match
+# ANDROID_CHANNEL_ID in the app's src/lib/push-notifications.ts.
+ANDROID_CHANNEL_ID = "default"
+_FCM_BATCH = 500
+
+
+def send_fcm_push(tokens, title, body, data=None, image=None):
+    """
+    Deliver one notification to many raw FCM registration tokens through
+    Firebase Admin. Returns the number accepted by FCM. Never raises; tokens FCM
+    reports as unregistered are deactivated.
+    """
+    tokens = list(dict.fromkeys(t for t in tokens if t and not _is_expo_token(t)))
+    if not tokens:
+        return 0
+    try:
+        from firebase_admin import messaging
+        from lipaidox.auth.googleOuth.googleOuth import FirebaseAuthService
+
+        service = FirebaseAuthService()
+        service.ensure_initialized()
+        if not service.initialized:
+            logger.warning("FCM push skipped: Firebase Admin is not initialised.")
+            return 0
+    except Exception as exc:
+        logger.warning("FCM push unavailable: %s", exc)
+        return 0
+
+    # FCM data values must be strings.
+    payload = {str(k): str(v) for k, v in (data or {}).items() if v is not None}
+    accepted = 0
+    dead = []
+    for start in range(0, len(tokens), _FCM_BATCH):
+        chunk = tokens[start:start + _FCM_BATCH]
+        try:
+            message = messaging.MulticastMessage(
+                tokens=chunk,
+                notification=messaging.Notification(title=title, body=body, image=image or None),
+                data=payload,
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id=ANDROID_CHANNEL_ID, sound="default", image=image or None,
+                    ),
+                ),
+            )
+            response = messaging.send_each_for_multicast(message)
+        except Exception as exc:
+            logger.warning("FCM batch failed: %s", exc)
+            continue
+        accepted += response.success_count
+        for tok, result in zip(chunk, response.responses):
+            if result.success:
+                continue
+            if isinstance(result.exception, (messaging.UnregisteredError, messaging.SenderIdMismatchError)):
+                dead.append(tok)
+            else:
+                logger.warning("FCM send failed: %s", result.exception)
+    if dead:
+        _deactivate(dead)
+    return accepted
+
+
+def send_push(tokens, title, body, data=None, image=None):
+    """Send to every token, Expo or FCM. Returns the number accepted. Never raises."""
+    tokens = list(dict.fromkeys(tokens))
+    return send_expo_push(tokens, title, body, data=data) + send_fcm_push(
+        tokens, title, body, data=data, image=image
+    )
 
 
 def active_tokens_for_users(users):

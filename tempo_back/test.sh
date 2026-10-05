@@ -13,7 +13,7 @@ cd "$(dirname "$0")"
 PY=./myenv/bin/python
 
 # Suites that need no database (fakes and mocks only).
-FAST=(lipaidox.creator_plans.tests lipaidox.payment.tests lipaidox.media_processor.tests lipaidox.tests_infrastructure lipaidox_backend.tests_legal_pages)
+FAST=(lipaidox.creator_plans.tests lipaidox.payment.tests lipaidox.media_processor.tests lipaidox.tests_infrastructure lipaidox_backend.tests_legal_pages lipaidox.notifications.tests_push)
 # Suites that need the real schema.
 DB=(lipaidox.credits.tests lipaidox.feedback.tests lipaidox.content.tests lipaidox.live_streaming.tests lipaidox.tests_caching lipaidox.kyc.tests lipaidox.wallet.tests_purge_test_money lipaidox.content.tests_scheduling lipaidox.auth.tests_firebase_auth)
 
