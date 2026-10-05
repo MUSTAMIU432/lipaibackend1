@@ -90,6 +90,8 @@ class ContentInteractionMutation:
         )
         if created:
             Content.objects.filter(id=content.id).update(like_count=F("like_count") + 1)
+            from lipaidox.notifications.services.events import notify_like
+            notify_like(content, user)
         return _result(content, liked=True, saved=_is_saved(user, content))
 
     @strawberry.mutation

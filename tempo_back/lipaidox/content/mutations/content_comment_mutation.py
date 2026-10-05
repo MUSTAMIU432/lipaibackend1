@@ -52,6 +52,8 @@ class ContentCommentMutation:
             author=user, content=content, tenant=getattr(user, "tenant", None),
             body=clean, status=ContentCommentStatus.PUBLISHED, parent=parent,
         )
+        from lipaidox.notifications.services.events import notify_comment
+        notify_comment(content, comment, user)
         return CreateContentCommentPayload(comment=build_content_comment_type(comment))
 
     @strawberry.mutation

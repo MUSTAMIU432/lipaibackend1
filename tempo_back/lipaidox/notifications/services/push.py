@@ -33,7 +33,7 @@ def _is_expo_token(token: str) -> bool:
     return bool(token) and token.startswith(("ExponentPushToken[", "ExpoPushToken["))
 
 
-def send_expo_push(tokens, title, body, data=None, badge=None, sound="default"):
+def send_expo_push(tokens, title, body, data=None, badge=None, sound="default", category=None):
     """
     Deliver one notification to many Expo push tokens.
 
@@ -62,6 +62,8 @@ def send_expo_push(tokens, title, body, data=None, badge=None, sound="default"):
                 msg["data"] = data
             if badge is not None:
                 msg["badge"] = badge
+            if category:
+                msg["categoryId"] = category
             messages.append(msg)
 
         try:
@@ -119,11 +121,19 @@ ANDROID_CHANNEL_ID = "default"
 _FCM_BATCH = 500
 
 
-def send_fcm_push(tokens, title, body, data=None, image=None):
+def send_fcm_push(tokens, title, body, data=None, image=None, category=None):
     """
     Deliver one notification to many raw FCM registration tokens through
     Firebase Admin. Returns the number accepted by FCM. Never raises; tokens FCM
     reports as unregistered are deactivated.
+
+    Sent as a *data-only* message in the shape expo-notifications understands
+    (``title`` / ``message`` / ``channelId`` / ``categoryId``, with ``body`` the
+    JSON the app reads back as the notification's ``data``). A data-only message
+    is built into the tray notification by the app's own code, which is the only
+    way Android shows the action buttons its ``categoryId`` names (View Post /
+    Dismiss, Accept / Decline). The cost: Android's system tray gets no cover
+    image; the in-app pop-up still shows it. ``image`` rides along in ``body``.
     """
     tokens = list(dict.fromkeys(t for t in tokens if t and not _is_expo_token(t)))
     if not tokens:
@@ -141,8 +151,19 @@ def send_fcm_push(tokens, title, body, data=None, image=None):
         logger.warning("FCM push unavailable: %s", exc)
         return 0
 
-    # FCM data values must be strings.
-    payload = {str(k): str(v) for k, v in (data or {}).items() if v is not None}
+    payload_data = dict(data or {})
+    if image:
+        payload_data["image"] = image
+    payload = {
+        "title": str(title),
+        "message": str(body),
+        "channelId": ANDROID_CHANNEL_ID,
+        "color": "#006BFA",
+        "body": json.dumps(payload_data, default=str),
+    }
+    if category:
+        payload["categoryId"] = category
+
     accepted = 0
     dead = []
     for start in range(0, len(tokens), _FCM_BATCH):
@@ -150,14 +171,8 @@ def send_fcm_push(tokens, title, body, data=None, image=None):
         try:
             message = messaging.MulticastMessage(
                 tokens=chunk,
-                notification=messaging.Notification(title=title, body=body, image=image or None),
                 data=payload,
-                android=messaging.AndroidConfig(
-                    priority="high",
-                    notification=messaging.AndroidNotification(
-                        channel_id=ANDROID_CHANNEL_ID, sound="default", image=image or None,
-                    ),
-                ),
+                android=messaging.AndroidConfig(priority="high"),
             )
             response = messaging.send_each_for_multicast(message)
         except Exception as exc:
@@ -176,11 +191,11 @@ def send_fcm_push(tokens, title, body, data=None, image=None):
     return accepted
 
 
-def send_push(tokens, title, body, data=None, image=None):
+def send_push(tokens, title, body, data=None, image=None, category=None):
     """Send to every token, Expo or FCM. Returns the number accepted. Never raises."""
     tokens = list(dict.fromkeys(tokens))
-    return send_expo_push(tokens, title, body, data=data) + send_fcm_push(
-        tokens, title, body, data=data, image=image
+    return send_expo_push(tokens, title, body, data=data, category=category) + send_fcm_push(
+        tokens, title, body, data=data, image=image, category=category
     )
 
 

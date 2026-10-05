@@ -22,3 +22,19 @@ def notify_new_content_posted_task(content_id) -> int:
     if content is None:
         return 0
     return notify_new_content_posted(content)
+
+
+@shared_task(name="lipaidox.notifications.send_notification_push")
+def send_notification_push_task(notification_id) -> int:
+    """Push one stored notification to the recipient's devices (best-effort)."""
+    from lipaidox.notifications.models.notification import Notification
+    from lipaidox.notifications.services.events import deliver_push
+
+    notification = Notification.objects.select_related("user").filter(pk=notification_id).first()
+    if notification is None:
+        return 0
+    try:
+        return deliver_push(notification)
+    except Exception as exc:
+        logger.warning("push for notification %s failed: %s", notification_id, exc)
+        return 0

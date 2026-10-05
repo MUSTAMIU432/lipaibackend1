@@ -30,20 +30,27 @@ class SendFcmPushTests(SimpleTestCase):
     def test_ignores_expo_tokens_and_empty_input(self):
         self.assertEqual(push.send_fcm_push([EXPO, "", None], "t", "b"), 0)
 
-    def test_sends_with_string_data_and_android_channel(self):
+    def test_sends_data_only_message_expo_notifications_can_build_with_actions(self):
+        import json
+
         from firebase_admin import messaging
 
         response = SimpleNamespace(success_count=2, responses=[SimpleNamespace(success=True)] * 2)
         with self._service(), mock.patch.object(messaging, "send_each_for_multicast", return_value=response) as send:
             accepted = push.send_fcm_push(
-                ["a", "b", EXPO], "Title", "Body", data={"entityId": 7, "skip": None}, image="https://x/y.jpg"
+                ["a", "b", EXPO], "Title", "Body", data={"entityId": 7},
+                image="https://x/y.jpg", category="post",
             )
         self.assertEqual(accepted, 2)
         message = send.call_args.args[0]
         self.assertEqual(message.tokens, ["a", "b"])
-        self.assertEqual(message.data, {"entityId": "7"})
-        self.assertEqual(message.android.notification.channel_id, push.ANDROID_CHANNEL_ID)
-        self.assertEqual(message.notification.image, "https://x/y.jpg")
+        # Data-only: a `notification` block would make Android draw it without action buttons.
+        self.assertIsNone(message.notification)
+        self.assertEqual(message.data["title"], "Title")
+        self.assertEqual(message.data["message"], "Body")
+        self.assertEqual(message.data["channelId"], push.ANDROID_CHANNEL_ID)
+        self.assertEqual(message.data["categoryId"], "post")
+        self.assertEqual(json.loads(message.data["body"]), {"entityId": 7, "image": "https://x/y.jpg"})
 
     def test_unregistered_tokens_are_deactivated(self):
         from firebase_admin import messaging

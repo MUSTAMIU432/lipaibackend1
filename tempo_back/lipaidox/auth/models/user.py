@@ -23,6 +23,8 @@ class User(AbstractUser):
     # `google_id`. Kept separately so a Firebase sign-in and a legacy Google-token
     # sign-in of the same Google account resolve to the same user.
     firebase_uid = models.CharField(max_length=128, blank=True, null=True)
+    # Private account: following needs this user's approval (see FollowRequest).
+    requires_follow_approval = models.BooleanField(default=False)
     apple_id = models.CharField(max_length=255, blank=True, null=True)
 
     # Staff / workspace context

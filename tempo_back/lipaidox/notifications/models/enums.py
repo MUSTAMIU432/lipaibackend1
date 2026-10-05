@@ -11,6 +11,8 @@ class NotificationType(models.TextChoices):
     NEW_TIP_RECEIVED = 'new_tip_received', 'New Tip Received'
     NEW_PPV_PURCHASE = 'new_ppv_purchase', 'New PPV Purchase'
     NEW_FOLLOWER = 'new_follower', 'New Follower'
+    NEW_FOLLOW_REQUEST = 'new_follow_request', 'New Follow Request'
+    FOLLOW_REQUEST_ACCEPTED = 'follow_request_accepted', 'Follow Request Accepted'
     NEW_COMMENT = 'new_comment', 'New Comment'
     NEW_LIKE = 'new_like', 'New Like'
     PAYOUT_COMPLETED = 'payout_completed', 'Payout Completed'

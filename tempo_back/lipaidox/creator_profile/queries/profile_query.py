@@ -143,6 +143,35 @@ class ProfileQuery:
         return FollowListType(users=users, totalCount=total)
 
     @strawberry.field
+    def follow_state(self, info: strawberry.types.Info, user_id: strawberry.ID) -> str:
+        """'following', 'requested' (private account, awaiting approval) or 'none'."""
+        from ..models.follow import Follow
+        from ..models.follow_request import FollowRequest, FollowRequestStatus
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return "none"
+        if Follow.objects.filter(follower=user, followed_id=user_id).exists():
+            return "following"
+        if FollowRequest.objects.filter(requester=user, target_id=user_id, status=FollowRequestStatus.PENDING).exists():
+            return "requested"
+        return "none"
+
+    @strawberry.field
+    def my_private_account(self, info: strawberry.types.Info) -> bool:
+        user = info.context.request.user
+        return bool(user.is_authenticated and user.requires_follow_approval)
+
+    @strawberry.field
+    def follow_request_state(self, info: strawberry.types.Info, requester_id: strawberry.ID) -> str:
+        """For the notification's Accept / Decline: 'pending', 'accepted', 'declined' or 'none'."""
+        from ..models.follow_request import FollowRequest
+        user = info.context.request.user
+        if not user.is_authenticated:
+            return "none"
+        row = FollowRequest.objects.filter(requester_id=requester_id, target=user).first()
+        return row.status if row else "none"
+
+    @strawberry.field
     def is_following(self, info: strawberry.types.Info, user_id: strawberry.ID) -> bool:
         from ..models.follow import Follow
         user = info.context.request.user

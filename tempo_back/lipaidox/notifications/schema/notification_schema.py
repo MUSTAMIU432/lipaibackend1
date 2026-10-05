@@ -413,3 +413,36 @@ class NotificationStats:
     byType: JSON
     byPriority: JSON
     deliveryStats: JSON
+
+
+# Mobile "Notifications" settings: the handful of switches the app shows, mapped
+# onto the NotificationPreference model's real columns.
+@strawberry.type
+class PushPreferencesType:
+    pushEnabled: bool
+    newPosts: bool
+    likes: bool
+    comments: bool
+    follows: bool
+    live: bool
+
+    @classmethod
+    def from_model(cls, p):
+        return cls(
+            pushEnabled=p.push_enabled,
+            newPosts=p.notify_new_content_posted,
+            likes=p.notify_new_like,
+            comments=p.notify_new_comment,
+            follows=p.notify_new_follower,
+            live=p.notify_creator_went_live,
+        )
+
+
+@strawberry.input
+class PushPreferencesInput:
+    pushEnabled: Optional[bool] = None
+    newPosts: Optional[bool] = None
+    likes: Optional[bool] = None
+    comments: Optional[bool] = None
+    follows: Optional[bool] = None
+    live: Optional[bool] = None

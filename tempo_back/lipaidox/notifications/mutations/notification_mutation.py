@@ -21,7 +21,7 @@ from ..schema.notification_schema import (
     
     # Input Types
     NotificationCreateInput, BulkNotificationInput,
-    NotificationPreferencesUpdateInput
+    NotificationPreferencesUpdateInput, PushPreferencesInput, PushPreferencesType
 )
 
 from lipaidox.auth.permissions import UserRoles
@@ -69,6 +69,28 @@ class NotificationMutation:
         }
         obj, created = PushToken.objects.update_or_create(token=token, defaults=defaults)
         return True
+
+    @strawberry.mutation
+    def update_push_preferences(
+        self, info: strawberry.types.Info, input: PushPreferencesInput
+    ) -> PushPreferencesType:
+        """Save the mobile Notifications switches; only the fields sent change."""
+        user = require_auth(info)
+        columns = {
+            "pushEnabled": "push_enabled",
+            "newPosts": "notify_new_content_posted",
+            "likes": "notify_new_like",
+            "comments": "notify_new_comment",
+            "follows": "notify_new_follower",
+            "live": "notify_creator_went_live",
+        }
+        changes = {
+            column: getattr(input, field)
+            for field, column in columns.items()
+            if getattr(input, field) is not None
+        }
+        prefs = NotificationPreference.bulk_update_preferences(user, changes)
+        return PushPreferencesType.from_model(prefs)
 
     @strawberry.mutation
     def unregister_push_token(self, info: strawberry.types.Info, token: str) -> bool:

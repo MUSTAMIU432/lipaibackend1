@@ -8,6 +8,16 @@ from lipaidox.auth.permissions import UserRoles
 
 USERNAME_COOLDOWN = timedelta(days=30)
 
+
+def _sync_follower_count(target) -> None:
+    from ..models.follow import Follow
+    try:
+        profile = target.profile
+        profile.follower_count = Follow.objects.filter(followed=target).count()
+        profile.save(update_fields=["follower_count"])
+    except Exception:
+        pass
+
 @strawberry.type
 class ProfileMutation:
     @strawberry.mutation
@@ -163,7 +173,10 @@ class ProfileMutation:
 
     @strawberry.mutation
     def follow_user(self, info: strawberry.types.Info, user_id: strawberry.ID) -> bool:
+        """Follow ``user_id``. True = now following. False = the account is private
+        and a follow request is waiting for approval (see ``followState``)."""
         from ..models.follow import Follow
+        from ..models.follow_request import FollowRequest, FollowRequestStatus
         user = info.context.request.user
         if not user.is_authenticated:
             raise Exception("Authentication required")
@@ -174,17 +187,85 @@ class ProfileMutation:
             target = User.objects.get(id=user_id)
         except User.DoesNotExist:
             raise Exception("User not found")
+
+        if target.requires_follow_approval and not Follow.objects.filter(follower=user, followed=target).exists():
+            request, created = FollowRequest.objects.get_or_create(
+                requester=user, target=target, tenant=user.tenant,
+            )
+            # Asking again after a decline puts it back to pending once; the
+            # target is told again only when something actually changed.
+            if created or request.status == FollowRequestStatus.DECLINED:
+                request.status = FollowRequestStatus.PENDING
+                request.save(update_fields=["status", "updated_at"])
+                from lipaidox.notifications.services.events import notify_follow_request
+                notify_follow_request(user, target)
+            return False
+
         _, created = Follow.objects.get_or_create(
             follower=user, followed=target, tenant=user.tenant
         )
         if created:
-            try:
-                profile = target.profile
-                profile.follower_count = Follow.objects.filter(followed=target).count()
-                profile.save(update_fields=["follower_count"])
-            except Exception:
-                pass
+            _sync_follower_count(target)
+            from lipaidox.notifications.services.events import notify_follow
+            notify_follow(user, target)
         return True
+
+    @strawberry.mutation
+    def cancel_follow_request(self, info: strawberry.types.Info, user_id: strawberry.ID) -> bool:
+        from ..models.follow_request import FollowRequest, FollowRequestStatus
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+        FollowRequest.objects.filter(
+            requester=user, target_id=user_id, status=FollowRequestStatus.PENDING
+        ).delete()
+        return True
+
+    @strawberry.mutation
+    def respond_to_follow_request(
+        self, info: strawberry.types.Info, requester_id: strawberry.ID, accept: bool
+    ) -> bool:
+        """The private account's owner accepts or declines a pending request.
+        Idempotent: answering twice (or a request that is gone) is a quiet no-op."""
+        from ..models.follow import Follow
+        from ..models.follow_request import FollowRequest, FollowRequestStatus
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+        request = FollowRequest.objects.select_related("requester").filter(
+            requester_id=requester_id, target=user, status=FollowRequestStatus.PENDING
+        ).first()
+        if request is None:
+            return False
+        if accept:
+            Follow.objects.get_or_create(follower=request.requester, followed=user, tenant=user.tenant)
+            request.status = FollowRequestStatus.ACCEPTED
+            _sync_follower_count(user)
+            from lipaidox.notifications.services.events import notify_follow_request_accepted
+            notify_follow_request_accepted(user, request.requester)
+        else:
+            request.status = FollowRequestStatus.DECLINED
+        request.save(update_fields=["status", "updated_at"])
+        return True
+
+    @strawberry.mutation
+    def set_private_account(self, info: strawberry.types.Info, enabled: bool) -> bool:
+        """Turn "Private account" on or off. Turning it off lets in everyone who was
+        waiting, so pending requests are accepted rather than left stranded."""
+        from ..models.follow import Follow
+        from ..models.follow_request import FollowRequest, FollowRequestStatus
+        user = info.context.request.user
+        if not user.is_authenticated:
+            raise Exception("Authentication required")
+        user.requires_follow_approval = bool(enabled)
+        user.save(update_fields=["requires_follow_approval"])
+        if not enabled:
+            for req in FollowRequest.objects.filter(target=user, status=FollowRequestStatus.PENDING):
+                Follow.objects.get_or_create(follower_id=req.requester_id, followed=user, tenant=user.tenant)
+                req.status = FollowRequestStatus.ACCEPTED
+                req.save(update_fields=["status", "updated_at"])
+            _sync_follower_count(user)
+        return bool(user.requires_follow_approval)
 
     @strawberry.mutation
     def unfollow_user(self, info: strawberry.types.Info, user_id: strawberry.ID) -> bool:

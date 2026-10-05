@@ -28,7 +28,7 @@ class NotificationPreference(TenantAwareModel):
     notify_new_ppv_purchase = models.BooleanField(default=True)
     notify_new_follower = models.BooleanField(default=True)
     notify_new_comment = models.BooleanField(default=True)
-    notify_new_like = models.BooleanField(default=False)
+    notify_new_like = models.BooleanField(default=True)
     notify_payout_completed = models.BooleanField(default=True)
     notify_payout_failed = models.BooleanField(default=True)
     notify_kyc_updates = models.BooleanField(default=True)
@@ -80,6 +80,8 @@ class NotificationPreference(TenantAwareModel):
             NotificationType.NEW_TIP_RECEIVED: 'notify_new_tip',
             NotificationType.NEW_PPV_PURCHASE: 'notify_new_ppv_purchase',
             NotificationType.NEW_FOLLOWER: 'notify_new_follower',
+            NotificationType.NEW_FOLLOW_REQUEST: 'notify_new_follower',
+            NotificationType.FOLLOW_REQUEST_ACCEPTED: 'notify_new_follower',
             NotificationType.NEW_COMMENT: 'notify_new_comment',
             NotificationType.NEW_LIKE: 'notify_new_like',
             NotificationType.PAYOUT_COMPLETED: 'notify_payout_completed',

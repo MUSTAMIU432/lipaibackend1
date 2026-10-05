@@ -20,7 +20,8 @@ from ..schema.notification_schema import (
     
     # Input Types
     NotificationCreateInput, BulkNotificationInput,
-    NotificationPreferencesUpdateInput, NotificationFilterInput
+    NotificationPreferencesUpdateInput, NotificationFilterInput,
+    PushPreferencesType
 )
 
 from lipaidox.auth.permissions import UserRoles
@@ -117,6 +118,13 @@ class NotificationQuery:
         )
 
     # Notification Preferences Queries
+    @strawberry.field
+    def my_push_preferences(self, info: strawberry.types.Info) -> PushPreferencesType:
+        """The switches on the mobile Notifications settings."""
+        from ..schema.notification_schema import PushPreferencesType
+        user = require_auth(info)
+        return PushPreferencesType.from_model(NotificationPreference.get_or_create_for_user(user))
+
     @strawberry.field
     def my_notification_preferences(self, info: strawberry.types.Info) -> NotificationPreferenceType:
         """Get current user's notification preferences"""

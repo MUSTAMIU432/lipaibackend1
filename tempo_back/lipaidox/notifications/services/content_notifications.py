@@ -88,6 +88,16 @@ def _thumbnail_url(content):
     return url if url and url.startswith("https://") else None
 
 
+def _push_allowed(user):
+    """Device push also respects the master push switch and quiet hours."""
+    try:
+        from lipaidox.notifications.models.notification_preferences import NotificationPreference
+        prefs = NotificationPreference.get_or_create_for_user(user)
+        return prefs.push_enabled and not prefs.is_quiet_hours_active()
+    except Exception:
+        return True
+
+
 def notify_new_content_posted(content):
     """Announce a newly-published post to its creator's audience. Idempotent.
 
@@ -147,7 +157,7 @@ def notify_new_content_posted(content):
         # Device push (best-effort).
         try:
             from lipaidox.notifications.services.push import send_push, active_tokens_for_users
-            tokens = active_tokens_for_users(recipients)
+            tokens = active_tokens_for_users([u for u in recipients if _push_allowed(u)])
             if tokens:
                 send_push(
                     tokens,
@@ -155,6 +165,7 @@ def notify_new_content_posted(content):
                     body=body,
                     data={"type": "new_content_posted", "entityId": str(content.id), "url": action_url},
                     image=thumbnail,
+                    category="post",
                 )
         except Exception as exc:
             logger.warning("new-content push delivery failed: %s", exc)
